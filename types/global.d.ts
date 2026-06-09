@@ -82,6 +82,8 @@ declare global {
     VITE_GLOB_APP_CLIENT_ID: string;
     // 是否开启websocket  注意从配置文件获取的类型为string
     VITE_GLOB_WEBSOCKET_ENABLE: string;
+    // 天地图浏览器端密钥，配置后启用真实天地图底图
+    VITE_GLOB_TIANDITU_TOKEN?: string;
   }
 
   declare function parseInt(s: string | number, radix?: number): number;

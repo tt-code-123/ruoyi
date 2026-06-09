@@ -17,7 +17,7 @@ export default defineApplicationConfig({
     server: {
       proxy: {
         '/basic-api': {
-          target: "http://43.136.39.79:7099/prod-api/",
+          target: 'http://183.66.221.218:8867/',
           // target: 'http://localhost:8080',
           changeOrigin: true,
           ws: true,
