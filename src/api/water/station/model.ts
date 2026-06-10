@@ -16,6 +16,7 @@ export interface WaterStationVO extends BaseEntity {
   stationCode?: string;
   stationName?: string;
   stationType?: string;
+  basin?: string;
   riverSystem?: string;
   riverName?: string;
   waterRegion3?: string;
@@ -31,7 +32,10 @@ export interface WaterStationVO extends BaseEntity {
   avgRunoffDepth?: number;
   avgPrecip5616?: number;
   avgPrecip5624?: number;
+  precip2024?: number;
   stationBelong?: string;
+  refStationCode?: string;
+  refStationName?: string;
   remark?: string;
 }
 

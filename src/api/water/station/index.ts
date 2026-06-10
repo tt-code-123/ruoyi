@@ -6,6 +6,7 @@ enum Api {
   Station = '/water/station',
   StationList = '/water/station/list',
   StationImportAll = '/water/station/importAll',
+  StationImportStationInfo = '/water/station/import/stationInfo',
   StationExport = '/water/station/export',
 }
 
@@ -34,6 +35,17 @@ export function waterStationImportAll(excelDir = 'import-excel') {
     url: Api.StationImportAll,
     params: { excelDir },
   });
+}
+
+export function waterStationImportStationInfo(file: File | Blob) {
+  return defHttp.uploadFile<number>(
+    {
+      url: Api.StationImportStationInfo,
+    },
+    {
+      file,
+    },
+  );
 }
 
 export function waterStationExport(params?: WaterStationQuery) {

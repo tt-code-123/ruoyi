@@ -2,6 +2,7 @@
   <BasicModal
     v-bind="$attrs"
     :title="title"
+    :width="960"
     @register="registerInnerModal"
     @ok="handleSubmit"
     @cancel="resetForm"
@@ -25,8 +26,9 @@
   const title = computed(() => (isUpdate.value ? '编辑站点' : '新增站点'));
 
   const [registerForm, { resetForm, setFieldsValue, validate }] = useForm({
-    labelWidth: 96,
+    layout: 'vertical',
     showActionButtonGroup: false,
+    rowProps: { gutter: [12, 4] },
     baseColProps: { xs: 24, sm: 24, md: 12 },
     schemas: modalSchemas,
   });

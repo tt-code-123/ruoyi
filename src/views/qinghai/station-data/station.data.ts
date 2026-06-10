@@ -15,7 +15,7 @@ export const searchSchemas: FormSchema[] = [
     component: 'Input',
   },
   {
-    label: '测站编码',
+    label: '编码',
     field: 'stationCode',
     component: 'Input',
   },
@@ -46,19 +46,15 @@ export const searchSchemas: FormSchema[] = [
 
 export const columns: BasicColumn[] = [
   {
-    title: '测站编码',
-    dataIndex: 'stationCode',
+    title: '站名站别',
+    dataIndex: 'id',
     width: 130,
+    customRender: ({ record }) => `${record.stationName} ${record.stationType}`,
   },
   {
-    title: '站名',
-    dataIndex: 'stationName',
-    width: 150,
-  },
-  {
-    title: '站别',
-    dataIndex: 'stationType',
-    width: 100,
+    title: '流域',
+    dataIndex: 'basin',
+    width: 110,
   },
   {
     title: '水系',
@@ -71,12 +67,27 @@ export const columns: BasicColumn[] = [
     width: 130,
   },
   {
-    title: '水资源三级区',
+    title: '站名',
+    dataIndex: 'stationName',
+    width: 150,
+  },
+  {
+    title: '编码',
+    dataIndex: 'stationCode',
+    width: 130,
+  },
+  {
+    title: '站别',
+    dataIndex: 'stationType',
+    width: 100,
+  },
+  {
+    title: '三级区',
     dataIndex: 'waterRegion3',
     width: 180,
   },
   {
-    title: '市州',
+    title: '地市',
     dataIndex: 'city',
     width: 110,
   },
@@ -88,22 +99,22 @@ export const columns: BasicColumn[] = [
   {
     title: '经度',
     dataIndex: 'longitude',
-    width: 100,
+    width: 120,
   },
   {
     title: '纬度',
     dataIndex: 'latitude',
-    width: 100,
+    width: 120,
   },
   {
-    title: '高程(m)',
-    dataIndex: 'elevation',
-    width: 100,
+    title: '1956-2016年均降水量(mm)',
+    dataIndex: 'avgPrecip5616',
+    width: 180,
   },
   {
-    title: '站点归属',
-    dataIndex: 'stationBelong',
-    width: 110,
+    title: '1956-2024年均降水量(mm)',
+    dataIndex: 'avgPrecip5624',
+    width: 180,
   },
 ];
 
@@ -115,7 +126,7 @@ export const modalSchemas: FormSchema[] = [
     show: false,
   },
   {
-    label: '测站编码',
+    label: '编码',
     field: 'stationCode',
     component: 'Input',
     required: true,
@@ -134,31 +145,6 @@ export const modalSchemas: FormSchema[] = [
     componentProps: {
       options: stationTypeOptions,
     },
-  },
-  {
-    label: '水系',
-    field: 'riverSystem',
-    component: 'Input',
-  },
-  {
-    label: '河流',
-    field: 'riverName',
-    component: 'Input',
-  },
-  {
-    label: '三级区',
-    field: 'waterRegion3',
-    component: 'Input',
-  },
-  {
-    label: '市州',
-    field: 'city',
-    component: 'Input',
-  },
-  {
-    label: '县区',
-    field: 'county',
-    component: 'Input',
   },
   {
     label: '经度',
@@ -181,37 +167,45 @@ export const modalSchemas: FormSchema[] = [
     },
   },
   {
-    label: '集水面积',
-    field: 'drainageArea',
-    component: 'InputNumber',
-    componentProps: {
-      precision: 2,
-      style: { width: '100%' },
-    },
-  },
-  {
-    label: '高程',
-    field: 'elevation',
-    component: 'InputNumber',
-    componentProps: {
-      precision: 2,
-      style: { width: '100%' },
-    },
-  },
-  {
-    label: '设站年月',
-    field: 'establishYear',
+    label: '水系',
+    field: 'riverSystem',
     component: 'Input',
   },
   {
-    label: '站点归属',
-    field: 'stationBelong',
+    label: '河流',
+    field: 'riverName',
     component: 'Input',
   },
   {
-    label: '备注',
-    field: 'remark',
-    component: 'InputTextArea',
+    label: '流域',
+    field: 'basin',
+    component: 'Input',
+  },
+  {
+    label: '三级区',
+    field: 'waterRegion3',
+    component: 'Input',
+  },
+  {
+    label: '市州',
+    field: 'city',
+    component: 'Input',
+  },
+  {
+    label: '县区',
+    field: 'county',
+    component: 'Input',
+  },
+  {
+    label: '1956-2016年均降水量(mm)',
+    field: 'avgPrecip5616',
+    component: 'Input',
+    colProps: { span: 24 },
+  },
+  {
+    label: '1956-2024年均降水量(mm)',
+    field: 'avgPrecip5624',
+    component: 'Input',
     colProps: { span: 24 },
   },
 ];
