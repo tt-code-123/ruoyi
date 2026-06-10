@@ -19,9 +19,19 @@
 
       <aside class="screen-panel left-panel">
         <section class="panel-section">
-          <div class="panel-title">站点图例</div>
+          <div class="panel-title">站点类型图例</div>
           <div class="legend-list">
-            <div v-for="item in stationLegend" :key="item.type" class="legend-item">
+            <div
+              v-for="item in stationLegend"
+              :key="item.type"
+              class="legend-item"
+              :class="{ 'legend-item-inactive': !isStationTypeVisible(item.type) }"
+              role="button"
+              tabindex="0"
+              @click="toggleStationType(item.type)"
+              @keydown.enter.prevent="toggleStationType(item.type)"
+              @keydown.space.prevent="toggleStationType(item.type)"
+            >
               <i :style="{ background: item.color }"></i>
               <span>{{ item.type }}</span>
               <strong>{{ item.count }}</strong>
@@ -43,21 +53,12 @@
       </aside>
 
       <footer class="bottom-panel">
-        <div class="bottom-stat">
-          <span>当前站点</span>
-          <strong>{{ displayStations.length }}</strong>
-        </div>
-        <div class="bottom-stat">
-          <span>市州统计</span>
-          <strong>{{ stationCountByCity.length }}</strong>
-        </div>
-        <div class="bottom-stat">
-          <span>分区数据</span>
-          <strong>{{ divisionMapData.length }}</strong>
-        </div>
-        <div class="bottom-stat">
-          <span>选中站点</span>
-          <strong>{{ selectedStation?.stationName || '未选择' }}</strong>
+        <div v-for="item in bottomStationStats" :key="item.type" class="bottom-stat">
+          <Icon class="bottom-stat-icon" :icon="item.icon" :size="28" />
+          <div>
+            <span>{{ item.label }}</span>
+            <strong>{{ item.count }}</strong>
+          </div>
         </div>
       </footer>
 
@@ -113,6 +114,7 @@
 <script setup lang="ts">
   import type { Ref } from 'vue';
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+  import Icon from '@/components/Icon/Icon.vue';
   import { PageWrapper } from '@/components/Page';
   import { useECharts } from '@/hooks/web/useECharts';
   import {
@@ -136,9 +138,10 @@
 
   const QINGHAI_MAP_NAME = 'qinghai-water';
   const QINGHAI_CENTER: [number, number] = [96.04, 35.72];
-  const MAP_AREA_COLOR = '#082b5f';
-  const MAP_EMPHASIS_COLOR = '#0d3f86';
-  const MAP_BORDER_COLOR = '#2b8bd7';
+  const SELECTED_STATION_SERIES_ID = 'selected-station-effect';
+  const MAP_AREA_COLOR = '#073b73';
+  const MAP_EMPHASIS_COLOR = '#0f5fa8';
+  const MAP_BORDER_COLOR = '#93c5fd';
   const STATION_COLORS: Record<string, string> = {
     水文: '#38bdf8',
     气象: '#f59e0b',
@@ -236,6 +239,7 @@
   const stationCountByDivision = ref<WaterChartRatioVO[]>([]);
   const stationCountByCity = ref<WaterCityStationCountVO[]>([]);
   const stationMapData = ref<WaterStationMapVO[]>(FALLBACK_STATIONS);
+  const hiddenStationTypes = ref<string[]>([]);
   const divisionMapData = ref<WaterDivisionMapVO[]>([]);
   const selectedStation = ref<WaterStationMapVO | null>(null);
   const selectedStationDetail = ref<WaterDashboardMap | null>(null);
@@ -243,23 +247,58 @@
 
   let timer: number | undefined;
 
-  const displayStations = computed(() =>
+  const allValidStations = computed(() =>
     stationMapData.value.filter((station) => isValidCoordinate(station)),
+  );
+
+  const displayStations = computed(() =>
+    allValidStations.value.filter(
+      (station) => !station.stationType || isStationTypeVisible(station.stationType),
+    ),
   );
 
   const stationLegend = computed(() => {
     const types = Array.from(
       new Set([
         ...Object.keys(STATION_COLORS),
-        ...displayStations.value.map((station) => station.stationType).filter(Boolean),
+        ...allValidStations.value
+          .map((station) => station.stationType)
+          .filter((type): type is string => Boolean(type)),
       ]),
     );
     return types.map((type) => ({
       type,
       color: getStationColor(type),
-      count: displayStations.value.filter((station) => station.stationType === type).length,
+      count: allValidStations.value.filter((station) => station.stationType === type).length,
     }));
   });
+
+  const bottomStationStats = computed(() => [
+    {
+      label: '气象站点',
+      type: '气象',
+      icon: 'mdi:weather-partly-cloudy',
+      count: countVisibleStationsByType('气象'),
+    },
+    {
+      label: '水文站点',
+      type: '水文',
+      icon: 'mdi:waves-arrow-up',
+      count: countVisibleStationsByType('水文'),
+    },
+    {
+      label: '中小河流站点',
+      type: '中小河流',
+      icon: 'mdi:waves',
+      count: countVisibleStationsByType('中小河流'),
+    },
+    {
+      label: '雨量站点',
+      type: '雨量',
+      icon: 'mdi:weather-pouring',
+      count: countVisibleStationsByType('雨量'),
+    },
+  ]);
 
   const detailSummary = computed(() => {
     if (!selectedStationDetail.value) {
@@ -360,11 +399,7 @@
       geo: createMapGeoOption(),
       series: [
         {
-          ...createMapGeoOption(),
-          type: 'map',
-          data: getMapRegionData(),
-        },
-        {
+          id: 'station-scatter',
           type: 'scatter',
           coordinateSystem: 'geo',
           symbolSize: 9,
@@ -372,12 +407,13 @@
           data: displayStations.value.map(toScatterData),
         },
         {
+          id: SELECTED_STATION_SERIES_ID,
           type: 'effectScatter',
           coordinateSystem: 'geo',
           symbolSize: 13,
           rippleEffect: { brushType: 'stroke', scale: 3 },
           zlevel: 4,
-          data: selectedStation.value ? [toScatterData(selectedStation.value)] : [],
+          data: getSelectedStationData(),
         },
       ],
     });
@@ -476,7 +512,7 @@
               y2: 0,
               colorStops: [
                 { offset: 0, color: '#0ea5e9' },
-                { offset: 1, color: '#67e8f9' },
+                { offset: 1, color: '#93c5fd' },
               ],
             },
           },
@@ -489,7 +525,7 @@
     selectedStation.value = station;
     selectedStationDetail.value = null;
     trendRows.value = [];
-    renderMapChart();
+    updateSelectedStationEffect();
     if (!station.stationCode) {
       return;
     }
@@ -510,7 +546,7 @@
       return;
     }
     setDetailTrendOptions({
-      color: ['#67e8f9', '#22c55e'],
+      color: ['#93c5fd', '#60a5fa'],
       tooltip: { trigger: 'axis' },
       grid: { left: 36, right: 16, top: 18, bottom: 24 },
       xAxis: {
@@ -540,7 +576,36 @@
     selectedStation.value = null;
     selectedStationDetail.value = null;
     trendRows.value = [];
-    renderMapChart();
+    updateSelectedStationEffect();
+  }
+
+  function toggleStationType(type: string) {
+    hiddenStationTypes.value = isStationTypeVisible(type)
+      ? [...hiddenStationTypes.value, type]
+      : hiddenStationTypes.value.filter((item) => item !== type);
+  }
+
+  function isStationTypeVisible(type: string) {
+    return !hiddenStationTypes.value.includes(type);
+  }
+
+  function countVisibleStationsByType(type: string) {
+    return displayStations.value.filter((station) => station.stationType === type).length;
+  }
+
+  function updateSelectedStationEffect() {
+    getMapInstance()?.setOption({
+      series: [
+        {
+          id: SELECTED_STATION_SERIES_ID,
+          data: getSelectedStationData(),
+        },
+      ],
+    });
+  }
+
+  function getSelectedStationData() {
+    return selectedStation.value ? [toScatterData(selectedStation.value)] : [];
   }
 
   function toScatterData(station: WaterStationMapVO) {
@@ -582,14 +647,6 @@
       detail.yearTrend,
     ].find((item) => Array.isArray(item));
     return Array.isArray(rows) ? rows.slice(-5) : [];
-  }
-
-  function getMapRegionData() {
-    const features = (qinghaiGeoJson as any).features || [];
-    return features.map((feature: any) => ({
-      name: feature?.properties?.name,
-      value: displayStations.value.length,
-    }));
   }
 
   function getSettledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
@@ -659,14 +716,61 @@
     overflow: hidden;
     color: #dff7ff;
     background:
-      radial-gradient(circle at 50% 45%, rgba(14, 78, 142, 0.32), transparent 38%),
+      linear-gradient(rgba(147, 197, 253, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(147, 197, 253, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(2, 8, 23, 0.96), rgba(8, 31, 62, 0.22) 43%, rgba(2, 8, 23, 0.96)),
+      linear-gradient(180deg, #020817, #092f66 52%, #020817);
+    background-size:
+      28px 28px,
+      28px 28px,
+      100% 100%,
+      100% 100%;
+  }
+
+  .water-screen::before,
+  .water-screen::after {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    content: '';
+  }
+
+  .water-screen::before {
+    background:
+      linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.18), transparent),
       linear-gradient(
-        90deg,
-        rgba(5, 17, 34, 0.94),
-        rgba(5, 17, 34, 0.1) 42%,
-        rgba(5, 17, 34, 0.94)
+        180deg,
+        rgba(147, 197, 253, 0.07),
+        transparent 22%,
+        transparent 78%,
+        rgba(147, 197, 253, 0.07)
+      );
+    mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 86%, transparent 100%);
+  }
+
+  .water-screen::after {
+    background:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, 0.035) 0,
+        rgba(255, 255, 255, 0.035) 1px,
+        transparent 1px,
+        transparent 7px
       ),
-      linear-gradient(180deg, #041226, #071d38 58%, #041226);
+      linear-gradient(
+        115deg,
+        transparent 0 42%,
+        rgba(96, 165, 250, 0.08) 43% 44%,
+        transparent 45% 100%
+      ),
+      linear-gradient(
+        65deg,
+        transparent 0 50%,
+        rgba(59, 130, 246, 0.08) 51% 52%,
+        transparent 53% 100%
+      );
+    opacity: 0.7;
   }
 
   .screen-header {
@@ -681,12 +785,22 @@
     height: 94px;
     padding: 16px 28px;
     text-align: center;
-    background: linear-gradient(180deg, rgba(6, 24, 48, 0.98), rgba(6, 24, 48, 0));
+    background:
+      linear-gradient(180deg, rgba(3, 15, 33, 0.98), rgba(3, 15, 33, 0)),
+      linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.16), transparent);
+    border-bottom: 1px solid rgba(147, 197, 253, 0.1);
   }
 
   .header-line {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.66));
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(147, 197, 253, 0.9),
+      rgba(96, 165, 250, 0.5),
+      transparent
+    );
+    box-shadow: 0 0 18px rgba(96, 165, 250, 0.54);
   }
 
   .header-title {
@@ -694,7 +808,8 @@
       margin: 0;
       font-size: 12px;
       font-weight: 700;
-      color: #67e8f9;
+      color: #7dd3fc;
+      text-shadow: 0 0 12px rgba(125, 211, 252, 0.68);
     }
 
     h1 {
@@ -702,7 +817,9 @@
       font-size: 34px;
       font-weight: 900;
       color: #f0fbff;
-      text-shadow: 0 0 18px rgba(56, 189, 248, 0.8);
+      text-shadow:
+        0 0 12px rgba(147, 197, 253, 0.82),
+        0 0 34px rgba(96, 165, 250, 0.28);
     }
   }
 
@@ -715,13 +832,52 @@
     color: #b7eaff;
   }
 
+  .header-tools :deep(.ant-btn) {
+    color: #dff7ff;
+    background: rgba(6, 28, 55, 0.46);
+    border-color: rgba(147, 197, 253, 0.45);
+    box-shadow:
+      inset 0 0 16px rgba(147, 197, 253, 0.08),
+      0 0 18px rgba(96, 165, 250, 0.16);
+  }
+
   .map-stage {
     position: absolute;
     inset: 74px 250px 74px;
     z-index: 1;
   }
 
+  .map-stage::before,
+  .map-stage::after {
+    position: absolute;
+    inset: 5% 8%;
+    pointer-events: none;
+    content: '';
+  }
+
+  .map-stage::before {
+    background:
+      linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.08), transparent),
+      linear-gradient(180deg, transparent, rgba(96, 165, 250, 0.1), transparent);
+    border: 1px solid rgba(147, 197, 253, 0.08);
+    box-shadow:
+      inset 0 0 80px rgba(147, 197, 253, 0.08),
+      0 0 90px rgba(96, 165, 250, 0.08);
+    transform: skewX(-6deg);
+  }
+
+  .map-stage::after {
+    inset: 13% 18%;
+    border: 1px solid rgba(125, 211, 252, 0.12);
+    box-shadow:
+      0 0 36px rgba(147, 197, 253, 0.11),
+      inset 0 0 36px rgba(147, 197, 253, 0.05);
+    transform: skewX(8deg);
+  }
+
   .map-chart {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
   }
@@ -753,32 +909,61 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding: 12px;
+    padding: 14px;
     overflow: hidden;
-    background: linear-gradient(180deg, rgba(8, 32, 62, 0.9), rgba(5, 20, 42, 0.78));
-    border: 1px solid rgba(56, 189, 248, 0.24);
+    background:
+      linear-gradient(135deg, rgba(147, 197, 253, 0.12), transparent 22%),
+      linear-gradient(180deg, rgba(12, 45, 92, 0.74), rgba(2, 8, 23, 0.74));
+    border: 1px solid rgba(147, 197, 253, 0.3);
     border-radius: 8px;
+    backdrop-filter: blur(12px);
     box-shadow:
-      inset 0 0 28px rgba(14, 165, 233, 0.08),
-      0 18px 44px rgba(0, 0, 0, 0.26);
+      inset 0 0 34px rgba(147, 197, 253, 0.08),
+      0 0 0 1px rgba(125, 211, 252, 0.04),
+      0 20px 56px rgba(0, 0, 0, 0.34);
   }
 
   .panel-section::before {
     position: absolute;
     top: 0;
-    left: 14px;
-    width: 68px;
-    height: 2px;
+    right: 16px;
+    left: 16px;
+    height: 1px;
     content: '';
-    background: #67e8f9;
-    box-shadow: 0 0 16px rgba(103, 232, 249, 0.8);
+    background: linear-gradient(90deg, transparent, #93c5fd, rgba(96, 165, 250, 0.72), transparent);
+    box-shadow: 0 0 18px rgba(96, 165, 250, 0.66);
+  }
+
+  .panel-section::after {
+    position: absolute;
+    top: 13px;
+    right: 13px;
+    width: 7px;
+    height: 7px;
+    content: '';
+    border-top: 1px solid rgba(147, 197, 253, 0.76);
+    border-right: 1px solid rgba(147, 197, 253, 0.76);
   }
 
   .panel-title {
-    margin-bottom: 10px;
+    position: relative;
+    padding-left: 12px;
+    margin-bottom: 12px;
     font-size: 14px;
     font-weight: 800;
     color: #e0faff;
+    text-shadow: 0 0 12px rgba(96, 165, 250, 0.52);
+  }
+
+  .panel-title::before {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    left: 0;
+    width: 3px;
+    content: '';
+    background: #93c5fd;
+    box-shadow: 0 0 12px rgba(96, 165, 250, 0.76);
   }
 
   .filter-section {
@@ -801,7 +986,7 @@
 
   .legend-list {
     display: grid;
-    gap: 10px;
+    gap: 9px;
   }
 
   .legend-item {
@@ -809,18 +994,48 @@
     grid-template-columns: 12px 1fr auto;
     gap: 10px;
     align-items: center;
+    min-height: 34px;
+    padding: 0 8px;
     color: #dff7ff;
+    cursor: pointer;
+    user-select: none;
+    border-radius: 6px;
+    outline: none;
+    background: rgba(2, 8, 23, 0.28);
+    border: 1px solid transparent;
+    transition:
+      opacity 0.18s ease,
+      background 0.18s ease,
+      border-color 0.18s ease,
+      box-shadow 0.18s ease;
+
+    &:hover,
+    &:focus-visible {
+      background: rgba(96, 165, 250, 0.1);
+      border-color: rgba(147, 197, 253, 0.22);
+      box-shadow: inset 0 0 18px rgba(147, 197, 253, 0.07);
+    }
 
     i {
       width: 10px;
       height: 10px;
       border: 1px solid #fff;
       border-radius: 999px;
-      box-shadow: 0 0 12px currentColor;
+      box-shadow:
+        0 0 10px currentColor,
+        0 0 20px currentColor;
     }
 
     strong {
-      color: #67e8f9;
+      color: #93c5fd;
+    }
+  }
+
+  .legend-item-inactive {
+    opacity: 0.42;
+
+    i {
+      background: transparent !important;
     }
   }
 
@@ -841,11 +1056,32 @@
   }
 
   .bottom-stat {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
     min-height: 62px;
     padding: 10px 12px;
-    background: rgba(8, 31, 58, 0.86);
-    border: 1px solid rgba(56, 189, 248, 0.22);
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, rgba(147, 197, 253, 0.14), transparent 30%),
+      linear-gradient(180deg, rgba(12, 45, 92, 0.84), rgba(2, 8, 23, 0.8));
+    border: 1px solid rgba(147, 197, 253, 0.28);
     border-radius: 8px;
+    box-shadow:
+      inset 0 0 22px rgba(147, 197, 253, 0.07),
+      0 18px 40px rgba(0, 0, 0, 0.28);
+
+    &::before {
+      position: absolute;
+      top: 0;
+      right: 12px;
+      left: 12px;
+      height: 1px;
+      content: '';
+      background: linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.78), transparent);
+    }
 
     span,
     strong {
@@ -857,14 +1093,21 @@
 
     span {
       font-size: 12px;
-      color: #a9cbd8;
+      color: #a7dff0;
     }
 
     strong {
       margin-top: 4px;
       font-size: 20px;
       color: #e0faff;
+      text-shadow: 0 0 14px rgba(96, 165, 250, 0.64);
     }
+  }
+
+  .bottom-stat-icon {
+    justify-self: center;
+    color: #93c5fd;
+    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.5));
   }
 
   .station-detail {
@@ -874,10 +1117,16 @@
     z-index: 6;
     width: 440px;
     padding: 18px;
-    background: linear-gradient(180deg, rgba(8, 34, 64, 0.96), rgba(6, 23, 44, 0.94));
-    border: 1px solid rgba(103, 232, 249, 0.34);
+    background:
+      linear-gradient(135deg, rgba(147, 197, 253, 0.14), transparent 26%),
+      linear-gradient(180deg, rgba(12, 45, 92, 0.96), rgba(2, 8, 23, 0.94));
+    border: 1px solid rgba(147, 197, 253, 0.38);
     border-radius: 8px;
-    box-shadow: 0 22px 72px rgba(0, 0, 0, 0.36);
+    box-shadow:
+      inset 0 0 34px rgba(147, 197, 253, 0.07),
+      0 22px 72px rgba(0, 0, 0, 0.42),
+      0 0 38px rgba(96, 165, 250, 0.1);
+    backdrop-filter: blur(14px);
     transform: translateX(-50%);
 
     h2 {
@@ -885,6 +1134,7 @@
       font-size: 22px;
       font-weight: 900;
       color: #f0fbff;
+      text-shadow: 0 0 16px rgba(96, 165, 250, 0.58);
     }
 
     p {
@@ -918,6 +1168,7 @@
     font-weight: 800;
     color: #061623;
     border-radius: 6px;
+    box-shadow: 0 0 16px rgba(96, 165, 250, 0.18);
   }
 
   .detail-close {
@@ -930,8 +1181,8 @@
     line-height: 24px;
     color: #dff7ff;
     cursor: pointer;
-    background: rgba(148, 216, 232, 0.14);
-    border: 1px solid rgba(148, 216, 232, 0.2);
+    background: rgba(96, 165, 250, 0.12);
+    border: 1px solid rgba(147, 197, 253, 0.26);
     border-radius: 50%;
   }
 
