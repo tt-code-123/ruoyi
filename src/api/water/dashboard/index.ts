@@ -1,13 +1,20 @@
 import { defHttp } from '@/utils/http/axios';
 import {
   WaterDashboardMap,
+  WaterChartRatioVO,
+  WaterCityStationCountVO,
   WaterDashboardQuery,
   WaterDivisionMapVO,
+  WaterStationCountByTypeVO,
   WaterStationMapVO,
 } from './model';
 
 enum Api {
   Overview = '/water/dashboard/overview',
+  StationCountByType = '/water/dashboard/stationCountByType',
+  StationTypeRatio = '/water/dashboard/stationTypeRatio',
+  StationCountByDivision = '/water/dashboard/stationCountByDivision',
+  StationCountByCity = '/water/dashboard/stationCountByCity',
   StationMap = '/water/dashboard/map/stations',
   StationDetail = '/water/dashboard/map/stationDetail/',
   RiverSystems = '/water/dashboard/map/riverSystems',
@@ -17,6 +24,22 @@ enum Api {
   BasinDistribution = '/water/dashboard/basinDistribution',
   PrecipTrend = '/water/dashboard/precipTrend',
   PrecipByRegion = '/water/dashboard/precipByRegion',
+}
+
+export function waterStationCountByType() {
+  return defHttp.get<WaterStationCountByTypeVO[]>({ url: Api.StationCountByType });
+}
+
+export function waterStationTypeRatio() {
+  return defHttp.get<WaterChartRatioVO[]>({ url: Api.StationTypeRatio });
+}
+
+export function waterStationCountByDivision() {
+  return defHttp.get<WaterChartRatioVO[]>({ url: Api.StationCountByDivision });
+}
+
+export function waterStationCountByCity() {
+  return defHttp.get<WaterCityStationCountVO[]>({ url: Api.StationCountByCity });
 }
 
 export function waterDashboardOverview() {

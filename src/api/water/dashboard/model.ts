@@ -12,6 +12,23 @@ export interface WaterDashboardQuery {
   limit?: number;
 }
 
+export interface WaterStationCountByTypeVO {
+  type?: string;
+  count?: number;
+  ratio?: number;
+}
+
+export interface WaterChartRatioVO {
+  name?: string;
+  value?: number;
+  ratio?: number;
+}
+
+export interface WaterCityStationCountVO {
+  city?: string;
+  count?: number;
+}
+
 export interface WaterStationMapVO {
   stationId?: number;
   stationCode?: string;

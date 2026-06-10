@@ -1,113 +1,62 @@
 <template>
   <PageWrapper contentFullHeight>
     <div class="water-screen">
-      <div ref="mapRef" class="screen-map">
-        <template v-if="!tiandituReady">
-          <div
-            class="mock-map"
-            :style="{ transform: `translate(${mockOffset.x}px, ${mockOffset.y}px)` }"
-            @pointerdown="startMockDrag"
-          >
-            <div class="mock-province"></div>
-            <button
-              v-for="station in displayStations"
-              :key="station.stationCode || station.stationId"
-              type="button"
-              class="mock-marker"
-              :style="getMockMarkerStyle(station)"
-              @click.stop="selectStation(station)"
-            >
-              <span></span>
-            </button>
-          </div>
-          <div class="map-fallback-tip">天地图未加载，当前显示模拟底图</div>
-        </template>
-      </div>
-
-      <div class="screen-vignette"></div>
       <header class="screen-header">
-        <div class="header-side-line"></div>
-        <div>
+        <div class="header-line"></div>
+        <div class="header-title">
           <p>QINGHAI WATER RESOURCE DIGITAL MAP</p>
           <h1>青海省水资源一张图</h1>
         </div>
-        <div class="header-meta">
+        <div class="header-tools">
           <span>{{ currentTime }}</span>
           <a-button size="small" ghost :loading="loading" @click="loadDashboard">刷新</a-button>
         </div>
       </header>
 
+      <main class="map-stage">
+        <div ref="mapChartRef" class="map-chart"></div>
+      </main>
+
       <aside class="screen-panel left-panel">
-        <section class="panel-section overview-section">
-          <div class="panel-title">综合概览</div>
-          <div class="overview-grid">
-            <div v-for="item in overviewCards" :key="item.label" class="metric-cell">
-              <strong>{{ item.value }}</strong>
-              <span>{{ item.label }}</span>
+        <section class="panel-section">
+          <div class="panel-title">站点图例</div>
+          <div class="legend-list">
+            <div v-for="item in stationLegend" :key="item.type" class="legend-item">
+              <i :style="{ background: item.color }"></i>
+              <span>{{ item.type }}</span>
+              <strong>{{ item.count }}</strong>
             </div>
           </div>
-        </section>
-
-        <section class="panel-section station-rank-section">
-          <div class="panel-title">站点流量排名</div>
-          <div ref="stationRankChartRef" class="chart-box"></div>
-        </section>
-
-        <section class="panel-section basin-section">
-          <div class="panel-title">流域分布</div>
-          <div ref="basinChartRef" class="chart-box basin-chart"></div>
         </section>
       </aside>
 
       <aside class="screen-panel right-panel">
-        <section class="panel-section filter-section">
-          <div class="panel-title">地图筛选</div>
-          <Select
-            v-model:value="filters.stationType"
-            allow-clear
-            placeholder="站别"
-            :options="stationTypeOptions"
-          />
-          <Select
-            v-model:value="filters.riverSystem"
-            allow-clear
-            placeholder="水系"
-            :options="riverSystemOptions"
-          />
-          <Select
-            v-model:value="filters.waterRegion3"
-            allow-clear
-            placeholder="水资源三级区"
-            :options="waterRegionOptions"
-          />
+        <section class="panel-section">
+          <div class="panel-title">流域站点占比</div>
+          <div ref="basinRatioChartRef" class="chart-box"></div>
         </section>
 
-        <section class="panel-section division-rank-section">
-          <div class="panel-title">分区水资源量排行</div>
-          <div ref="divisionRankChartRef" class="chart-box"></div>
-        </section>
-
-        <section class="panel-section precip-trend-section">
-          <div class="panel-title">降水趋势</div>
-          <div ref="precipTrendChartRef" class="chart-box small"></div>
+        <section class="panel-section">
+          <div class="panel-title">行政区站点数量统计</div>
+          <div ref="divisionChartRef" class="chart-box"></div>
         </section>
       </aside>
 
       <footer class="bottom-panel">
         <div class="bottom-stat">
-          <span>地图站点</span>
+          <span>当前站点</span>
           <strong>{{ displayStations.length }}</strong>
         </div>
         <div class="bottom-stat">
-          <span>行政分区</span>
+          <span>市州统计</span>
+          <strong>{{ stationCountByCity.length }}</strong>
+        </div>
+        <div class="bottom-stat">
+          <span>分区数据</span>
           <strong>{{ divisionMapData.length }}</strong>
         </div>
         <div class="bottom-stat">
-          <span>河流水系</span>
-          <strong>{{ riverSystemData.length }}</strong>
-        </div>
-        <div class="bottom-stat">
-          <span>当前站点</span>
+          <span>选中站点</span>
           <strong>{{ selectedStation?.stationName || '未选择' }}</strong>
         </div>
       </footer>
@@ -115,8 +64,13 @@
       <transition name="detail-panel">
         <article v-if="selectedStation" class="station-detail">
           <button type="button" class="detail-close" @click="closeStationDetail">×</button>
-          <span class="station-badge">{{ selectedStation.stationType || '站点' }}</span>
-          <h2>{{ selectedStation.stationName }}</h2>
+          <span
+            class="station-badge"
+            :style="{ background: getStationColor(selectedStation.stationType) }"
+          >
+            {{ selectedStation.stationType || '站点' }}
+          </span>
+          <h2>{{ selectedStation.stationName || '-' }}</h2>
           <p
             >{{ selectedStation.riverSystem || '-' }} / {{ selectedStation.waterRegion3 || '-' }}</p
           >
@@ -130,26 +84,26 @@
               <dd>{{ selectedStation.city || '-' }} {{ selectedStation.county || '' }}</dd>
             </div>
             <div>
+              <dt>经纬度</dt>
+              <dd>{{ formatCoordinate(selectedStation.longitude, selectedStation.latitude) }}</dd>
+            </div>
+            <div>
+              <dt>高程</dt>
+              <dd>{{ formatNumber(selectedStation.elevation) }} m</dd>
+            </div>
+            <div>
               <dt>年均径流量</dt>
-              <dd>{{ formatNumber(selectedStation.avgRunoff5616) }} 亿m3</dd>
+              <dd>{{ formatNumber(selectedStation.avgRunoff5616) }} 亿m³</dd>
             </div>
             <div>
               <dt>年均降水量</dt>
               <dd>{{ formatNumber(selectedStation.avgPrecip5616) }} mm</dd>
             </div>
-            <div>
-              <dt>最新径流量</dt>
-              <dd>{{ formatNumber(selectedStation.latestRunoff) }} 亿m3</dd>
-            </div>
-            <div>
-              <dt>最新降水量</dt>
-              <dd>{{ formatNumber(selectedStation.latestPrecip) }} mm</dd>
-            </div>
           </dl>
-          <div class="detail-extra">
-            <span v-if="detailLoading">详情加载中...</span>
-            <span v-else>{{ detailSummary }}</span>
-          </div>
+          <div v-if="trendRows.length" ref="detailTrendChartRef" class="detail-chart"></div>
+          <div v-else class="detail-extra">{{
+            detailLoading ? '详情加载中...' : detailSummary
+          }}</div>
         </article>
       </transition>
     </div>
@@ -157,59 +111,39 @@
 </template>
 
 <script setup lang="ts">
-  import type { EChartsOption } from 'echarts';
   import type { Ref } from 'vue';
-  import { Select } from 'ant-design-vue';
-  import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
   import { PageWrapper } from '@/components/Page';
   import { useECharts } from '@/hooks/web/useECharts';
   import {
-    waterBasinDistribution,
-    waterDashboardOverview,
     waterDivisionMap,
-    waterDivisionRanking,
-    waterPrecipByRegion,
-    waterPrecipTrend,
-    waterRiverSystems,
+    waterStationCountByCity,
+    waterStationCountByDivision,
     waterStationDetail,
     waterStationMap,
-    waterStationRanking,
+    waterStationTypeRatio,
   } from '@/api/water/dashboard';
-  import {
+  import type {
+    WaterChartRatioVO,
+    WaterCityStationCountVO,
     WaterDashboardMap,
     WaterDivisionMapVO,
     WaterStationMapVO,
   } from '@/api/water/dashboard/model';
+  import * as qinghaiGeoJson from './geo/qinghai.json';
 
   defineOptions({ name: 'QinghaiStationMap' });
 
-  interface TiandituLngLat {
-    lng: number;
-    lat: number;
-  }
-
-  interface TiandituMarker {
-    addEventListener(type: 'click', handler: () => void): void;
-  }
-
-  interface TiandituMap {
-    centerAndZoom(point: TiandituLngLat, zoom: number): void;
-    addOverLay(marker: TiandituMarker): void;
-    clearOverLays(): void;
-    enableDrag?(): void;
-    enableScrollWheelZoom?(): void;
-  }
-
-  interface TiandituNamespace {
-    Map: new (container: HTMLElement | string) => TiandituMap;
-    LngLat: new (longitude: number, latitude: number) => TiandituLngLat;
-    Marker: new (point: TiandituLngLat) => TiandituMarker;
-  }
-
-  const QINGHAI_CENTER = {
-    longitude: 96.0435,
-    latitude: 35.7264,
-    zoom: 7,
+  const QINGHAI_MAP_NAME = 'qinghai-water';
+  const QINGHAI_CENTER: [number, number] = [96.04, 35.72];
+  const MAP_AREA_COLOR = '#082b5f';
+  const MAP_EMPHASIS_COLOR = '#0d3f86';
+  const MAP_BORDER_COLOR = '#2b8bd7';
+  const STATION_COLORS: Record<string, string> = {
+    水文: '#38bdf8',
+    气象: '#f59e0b',
+    雨量: '#22c55e',
+    中小河流: '#a78bfa',
   };
 
   const FALLBACK_STATIONS: WaterStationMapVO[] = [
@@ -224,10 +158,9 @@
       county: '玛多县',
       longitude: 98.1667,
       latitude: 34.8833,
+      elevation: 4211,
       avgRunoff5616: 7.225,
       avgPrecip5616: 318.8,
-      latestRunoff: 7.6,
-      latestPrecip: 326,
     },
     {
       stationId: 2,
@@ -240,10 +173,9 @@
       county: '兴海县',
       longitude: 100.1538,
       latitude: 35.4989,
+      elevation: 2665,
       avgRunoff5616: 199.6,
       avgPrecip5616: 406.2,
-      latestRunoff: 208.1,
-      latestPrecip: 421.4,
     },
     {
       stationId: 3,
@@ -256,10 +188,8 @@
       county: '共和县',
       longitude: 100.2452,
       latitude: 36.8964,
-      avgRunoff5616: 2.85,
+      elevation: 3196,
       avgPrecip5616: 360.5,
-      latestRunoff: 2.9,
-      latestPrecip: 372.8,
     },
     {
       stationId: 4,
@@ -272,396 +202,254 @@
       county: '德令哈市',
       longitude: 97.3608,
       latitude: 37.3694,
-      avgRunoff5616: 12.4,
+      elevation: 2980,
       avgPrecip5616: 168.3,
-      latestRunoff: 11.7,
-      latestPrecip: 174.2,
     },
   ];
 
-  const FALLBACK_OVERVIEW: WaterDashboardMap = {
-    stationCount: 245,
-    hydrologyStationCount: 78,
-    meteorologyStationCount: 96,
-    divisionCount: 126,
-    surfaceResourceTotal: 629.1,
-    groundwaterResourceTotal: 84600,
-  };
-
-  const FALLBACK_BASIN = [
-    { name: '黄河流域', value: 68 },
-    { name: '长江流域', value: 34 },
-    { name: '西北诸河', value: 24 },
-  ];
-
-  const mapRef = ref<HTMLElement>();
-  const stationRankChartRef = ref<HTMLDivElement | null>(null);
-  const basinChartRef = ref<HTMLDivElement | null>(null);
-  const divisionRankChartRef = ref<HTMLDivElement | null>(null);
-  const precipTrendChartRef = ref<HTMLDivElement | null>(null);
-  const { setOptions: setStationRankOptions } = useECharts(
-    stationRankChartRef as Ref<HTMLDivElement>,
+  const mapChartRef = ref<HTMLDivElement | null>(null);
+  const basinRatioChartRef = ref<HTMLDivElement | null>(null);
+  const divisionChartRef = ref<HTMLDivElement | null>(null);
+  const detailTrendChartRef = ref<HTMLDivElement | null>(null);
+  const {
+    setOptions: setMapOptions,
+    echarts,
+    getInstance: getMapInstance,
+  } = useECharts(mapChartRef as Ref<HTMLDivElement>, 'dark');
+  const { setOptions: setBasinRatioOptions } = useECharts(
+    basinRatioChartRef as Ref<HTMLDivElement>,
     'dark',
   );
-  const { setOptions: setBasinOptions } = useECharts(basinChartRef as Ref<HTMLDivElement>, 'dark');
-  const { setOptions: setDivisionRankOptions } = useECharts(
-    divisionRankChartRef as Ref<HTMLDivElement>,
+  const { setOptions: setDivisionOptions } = useECharts(
+    divisionChartRef as Ref<HTMLDivElement>,
     'dark',
   );
-  const { setOptions: setPrecipTrendOptions } = useECharts(
-    precipTrendChartRef as Ref<HTMLDivElement>,
+  const { setOptions: setDetailTrendOptions } = useECharts(
+    detailTrendChartRef as Ref<HTMLDivElement>,
     'dark',
   );
 
   const currentTime = ref('');
   const loading = ref(false);
   const detailLoading = ref(false);
-  const tiandituReady = ref(false);
-  const overview = ref<WaterDashboardMap>(FALLBACK_OVERVIEW);
+  const stationTypeRatio = ref<WaterChartRatioVO[]>([]);
+  const stationCountByDivision = ref<WaterChartRatioVO[]>([]);
+  const stationCountByCity = ref<WaterCityStationCountVO[]>([]);
   const stationMapData = ref<WaterStationMapVO[]>(FALLBACK_STATIONS);
-  const riverSystemData = ref<WaterDashboardMap[]>([]);
   const divisionMapData = ref<WaterDivisionMapVO[]>([]);
   const selectedStation = ref<WaterStationMapVO | null>(null);
   const selectedStationDetail = ref<WaterDashboardMap | null>(null);
-  const mockOffset = reactive({ x: 0, y: 0 });
-  const filters = reactive({
-    stationType: undefined as string | undefined,
-    riverSystem: undefined as string | undefined,
-    waterRegion3: undefined as string | undefined,
-  });
+  const trendRows = ref<WaterDashboardMap[]>([]);
 
-  let tiandituMap: TiandituMap | null = null;
   let timer: number | undefined;
-  let mockDragStart: {
-    pointerId: number;
-    x: number;
-    y: number;
-    offsetX: number;
-    offsetY: number;
-  } | null = null;
 
-  const displayStations = computed(() => {
-    return stationMapData.value.filter((station) => {
-      return (
-        (!filters.stationType || station.stationType === filters.stationType) &&
-        (!filters.riverSystem || station.riverSystem === filters.riverSystem) &&
-        (!filters.waterRegion3 || station.waterRegion3 === filters.waterRegion3)
-      );
-    });
+  const displayStations = computed(() =>
+    stationMapData.value.filter((station) => isValidCoordinate(station)),
+  );
+
+  const stationLegend = computed(() => {
+    const types = Array.from(
+      new Set([
+        ...Object.keys(STATION_COLORS),
+        ...displayStations.value.map((station) => station.stationType).filter(Boolean),
+      ]),
+    );
+    return types.map((type) => ({
+      type,
+      color: getStationColor(type),
+      count: displayStations.value.filter((station) => station.stationType === type).length,
+    }));
   });
-
-  const overviewCards = computed(() => [
-    { label: '站点总数', value: formatNumber(pickOverview('stationCount', 'totalStationCount')) },
-    {
-      label: '水文站',
-      value: formatNumber(pickOverview('hydrologyStationCount', 'waterStationCount')),
-    },
-    {
-      label: '气象站',
-      value: formatNumber(pickOverview('meteorologyStationCount', 'weatherStationCount')),
-    },
-    { label: '行政分区', value: formatNumber(pickOverview('divisionCount', 'adminDivisionCount')) },
-    {
-      label: '地表水资源量',
-      value: `${formatNumber(pickOverview('surfaceResourceTotal', 'surfaceWaterTotal'))} 亿m3`,
-    },
-    {
-      label: '地下水资源量',
-      value: `${formatNumber(pickOverview('groundwaterResourceTotal', 'groundwaterTotal'))} 万m3`,
-    },
-  ]);
 
   const detailSummary = computed(() => {
     if (!selectedStationDetail.value) {
-      return '点击地图站点后展示接口返回的站点基础信息和近年趋势数据';
+      return '暂无更多详情数据';
     }
     const keys = Object.keys(selectedStationDetail.value);
     return keys.length ? `已加载详情字段：${keys.slice(0, 6).join('、')}` : '暂无更多详情数据';
   });
 
-  const stationTypeOptions = computed(() => buildOptions(stationMapData.value, 'stationType'));
-  const riverSystemOptions = computed(() => buildOptions(stationMapData.value, 'riverSystem'));
-  const waterRegionOptions = computed(() => buildOptions(stationMapData.value, 'waterRegion3'));
-
   onMounted(async () => {
+    echarts.registerMap(QINGHAI_MAP_NAME, qinghaiGeoJson as any);
+    bindMapClick();
     refreshTime();
     timer = window.setInterval(refreshTime, 1000 * 30);
-    await nextTick();
-    await initTiandituMap();
     await loadDashboard();
   });
 
   onBeforeUnmount(() => {
-    tiandituMap?.clearOverLays();
-    tiandituMap = null;
     if (timer) {
       window.clearInterval(timer);
     }
-    window.removeEventListener('pointermove', handleMockDragMove);
-    window.removeEventListener('pointerup', stopMockDrag);
   });
 
   watch(displayStations, () => {
     if (
+      selectedStation.value &&
       !displayStations.value.some(
         (station) => station.stationCode === selectedStation.value?.stationCode,
       )
     ) {
       closeStationDetail();
     }
-    renderTiandituMarkers();
+    renderMapChart();
   });
 
   async function loadDashboard() {
     loading.value = true;
     try {
       const [
-        overviewResult,
-        stationsResult,
-        riversResult,
-        divisionsResult,
-        stationRankResult,
-        divisionRankResult,
-        basinResult,
-        precipByRegionResult,
+        typeRatioResult,
+        divisionCountResult,
+        cityCountResult,
+        stationMapResult,
+        divisionMapResult,
       ] = await Promise.allSettled([
-        waterDashboardOverview(),
+        waterStationTypeRatio(),
+        waterStationCountByDivision(),
+        waterStationCountByCity(),
         waterStationMap(),
-        waterRiverSystems(),
         waterDivisionMap(),
-        waterStationRanking({ limit: 12 }),
-        waterDivisionRanking({ year: 0, limit: 10 }),
-        waterBasinDistribution(),
-        waterPrecipByRegion({ year: 0 }),
       ]);
 
-      overview.value = getSettledValue(overviewResult, FALLBACK_OVERVIEW);
-      stationMapData.value = getSettledValue(stationsResult, FALLBACK_STATIONS);
-      riverSystemData.value = getSettledValue(riversResult, []);
-      divisionMapData.value = getSettledValue(divisionsResult, []);
-      renderTiandituMarkers();
-      renderStationRankChart(getSettledValue(stationRankResult, stationMapData.value));
-      renderDivisionRankChart(getSettledValue(divisionRankResult, divisionMapData.value));
-      renderBasinChart(getSettledValue(basinResult, FALLBACK_BASIN));
-
-      const firstStationCode = displayStations.value[0]?.stationCode;
-      if (firstStationCode) {
-        await loadPrecipTrend(firstStationCode);
-      } else {
-        renderPrecipTrendChart(getSettledValue(precipByRegionResult, []));
-      }
+      stationTypeRatio.value = getSettledValue(typeRatioResult, []);
+      stationCountByDivision.value = getSettledValue(divisionCountResult, []);
+      stationCountByCity.value = getSettledValue(cityCountResult, []);
+      stationMapData.value = getSettledValue(stationMapResult, FALLBACK_STATIONS);
+      divisionMapData.value = getSettledValue(divisionMapResult, []);
+      renderMapChart();
+      renderBasinRatioChart();
+      renderDivisionChart();
     } finally {
       loading.value = false;
     }
   }
 
-  async function initTiandituMap() {
-    const token = import.meta.env.VITE_GLOB_TIANDITU_TOKEN;
-    if (!token || !mapRef.value) {
-      return;
-    }
-
-    try {
-      await loadTiandituScript(token);
-      const tianditu = getTiandituNamespace();
-      if (!tianditu || !mapRef.value) {
-        return;
-      }
-
-      tiandituMap = new tianditu.Map(mapRef.value);
-      tiandituMap.centerAndZoom(
-        new tianditu.LngLat(QINGHAI_CENTER.longitude, QINGHAI_CENTER.latitude),
-        QINGHAI_CENTER.zoom,
-      );
-      tiandituMap.enableDrag?.();
-      tiandituMap.enableScrollWheelZoom?.();
-      tiandituReady.value = true;
-      renderTiandituMarkers();
-    } catch (error) {
-      console.warn('天地图脚本加载失败，已切换为模拟底图。', error);
-    }
-  }
-
-  function loadTiandituScript(token: string) {
-    const scriptId = 'tianditu-js-sdk';
-    const existingScript = document.getElementById(scriptId) as HTMLScriptElement | null;
-    if (existingScript) {
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve, reject) => {
-      const script = document.createElement('script');
-      script.id = scriptId;
-      script.type = 'text/javascript';
-      script.src = `https://api.tianditu.gov.cn/api?v=4.0&tk=${token}`;
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error('Tianditu SDK load failed'));
-      document.head.appendChild(script);
+  function bindMapClick() {
+    nextTick(() => {
+      const instance = getMapInstance();
+      instance?.off('click');
+      instance?.on('click', (params: any) => {
+        if (
+          params?.componentSubType === 'scatter' ||
+          params?.componentSubType === 'effectScatter'
+        ) {
+          selectStation(params.data.raw);
+        }
+      });
     });
   }
 
-  function getTiandituNamespace() {
-    return (window as unknown as { T?: TiandituNamespace }).T;
-  }
-
-  function renderTiandituMarkers() {
-    if (!tiandituMap || !tiandituReady.value) {
-      return;
-    }
-
-    const tianditu = getTiandituNamespace();
-    if (!tianditu) {
-      return;
-    }
-
-    tiandituMap.clearOverLays();
-    displayStations.value.forEach((station) => {
-      if (!isValidCoordinate(station)) {
-        return;
-      }
-      const point = new tianditu.LngLat(Number(station.longitude), Number(station.latitude));
-      const marker = new tianditu.Marker(point);
-      marker.addEventListener('click', () => selectStation(station));
-      tiandituMap?.addOverLay(marker);
+  function renderMapChart() {
+    setMapOptions({
+      tooltip: {
+        trigger: 'item',
+        formatter(params: any) {
+          const raw = params.data?.raw;
+          if (!raw) {
+            return `${params.name}<br/>站点 ${displayStations.value.length} 个`;
+          }
+          return [
+            `<strong>${raw.stationName || '-'}</strong>`,
+            `站别：${raw.stationType || '-'}`,
+            `地区：${raw.city || '-'} ${raw.county || ''}`,
+            `水系：${raw.riverSystem || '-'}`,
+          ].join('<br/>');
+        },
+      },
+      geo: createMapGeoOption(),
+      series: [
+        {
+          ...createMapGeoOption(),
+          type: 'map',
+          data: getMapRegionData(),
+        },
+        {
+          type: 'scatter',
+          coordinateSystem: 'geo',
+          symbolSize: 9,
+          zlevel: 3,
+          data: displayStations.value.map(toScatterData),
+        },
+        {
+          type: 'effectScatter',
+          coordinateSystem: 'geo',
+          symbolSize: 13,
+          rippleEffect: { brushType: 'stroke', scale: 3 },
+          zlevel: 4,
+          data: selectedStation.value ? [toScatterData(selectedStation.value)] : [],
+        },
+      ],
     });
+    bindMapClick();
   }
 
-  async function selectStation(station: WaterStationMapVO) {
-    selectedStation.value = station;
-    if (station.stationCode) {
-      detailLoading.value = true;
-      try {
-        selectedStationDetail.value = await waterStationDetail(station.stationCode);
-      } catch {
-        selectedStationDetail.value = null;
-      } finally {
-        detailLoading.value = false;
-      }
-      await loadPrecipTrend(station.stationCode);
-    }
+  function createMapGeoOption() {
+    return {
+      map: QINGHAI_MAP_NAME,
+      roam: true,
+      zoom: 1.18,
+      center: QINGHAI_CENTER,
+      scaleLimit: { min: 0.9, max: 6 },
+      itemStyle: {
+        areaColor: MAP_AREA_COLOR,
+        borderColor: MAP_BORDER_COLOR,
+        borderWidth: 1.5,
+        shadowBlur: 22,
+        shadowColor: 'rgba(35, 128, 205, 0.34)',
+      },
+      emphasis: {
+        itemStyle: { areaColor: MAP_EMPHASIS_COLOR },
+        label: { color: '#fff' },
+      },
+      label: {
+        show: true,
+        color: '#dff7ff',
+        fontWeight: 700,
+      },
+    };
   }
 
-  function closeStationDetail() {
-    selectedStation.value = null;
-    selectedStationDetail.value = null;
-  }
+  function renderBasinRatioChart() {
+    const rows = stationTypeRatio.value.length ? stationTypeRatio.value : buildStationTypeRatio();
 
-  async function loadPrecipTrend(stationCode: string) {
-    try {
-      const data = await waterPrecipTrend({ stationCode, startYear: 1956, endYear: 2016 });
-      renderPrecipTrendChart(data);
-    } catch {
-      renderPrecipTrendChart([
-        { year: 2019, value: 318 },
-        { year: 2020, value: 332 },
-        { year: 2021, value: 309 },
-        { year: 2022, value: 346 },
-        { year: 2023, value: 358 },
-      ]);
-    }
-  }
-
-  function renderStationRankChart(data: WaterDashboardMap[]) {
-    const rows = data.slice(0, 12);
-    setStationRankOptions(
-      createBarOption(rows, ['stationName', 'name', 'label'], ['avgRunoff5616', 'value', 'runoff']),
-    );
-  }
-
-  function renderDivisionRankChart(data: WaterDashboardMap[]) {
-    const rows = data.slice(0, 10);
-    setDivisionRankOptions(
-      createBarOption(
-        rows,
-        ['level3Region', 'divName', 'name', 'city'],
-        ['surfaceResource', 'value', 'resource'],
-      ),
-    );
-  }
-
-  function renderBasinChart(data: WaterDashboardMap[]) {
-    const seriesData = data.map((item) => ({
-      name: pickText(item, ['level1Region', 'basinName', 'name', 'label']),
-      value: pickNumber(item, ['count', 'value', 'total']),
-    }));
-
-    setBasinOptions({
-      color: ['#38bdf8', '#22c55e', '#f59e0b', '#a78bfa'],
-      tooltip: { trigger: 'item' },
+    setBasinRatioOptions({
+      color: Object.values(STATION_COLORS),
+      tooltip: { trigger: 'item', formatter: '{b}<br/>{c} 个 ({d}%)' },
       legend: {
         type: 'scroll',
-        orient: 'vertical',
-        top: 'middle',
-        right: 0,
-        itemWidth: 10,
-        itemHeight: 10,
+        bottom: 0,
         textStyle: { color: '#b7d9e8' },
       },
       series: [
         {
           type: 'pie',
-          radius: ['42%', '66%'],
-          center: ['34%', '50%'],
-          avoidLabelOverlap: true,
-          label: { show: false },
-          labelLine: { show: false },
-          data: seriesData,
+          radius: ['48%', '68%'],
+          center: ['50%', '44%'],
+          label: {
+            color: '#dff7ff',
+            formatter: '{b}\n{d}%',
+          },
+          data: rows.map((item) => ({
+            name: item.name || '站点',
+            value: Number(item.value || 0),
+          })),
         },
       ],
     });
   }
 
-  function renderPrecipTrendChart(data: WaterDashboardMap[]) {
-    const rows = data.length
-      ? data
-      : [
-          { year: 2019, value: 318 },
-          { year: 2020, value: 332 },
-          { year: 2021, value: 309 },
-          { year: 2022, value: 346 },
-        ];
-    const xData = rows.map((item) => pickText(item, ['year', 'name', 'label']));
-    const yData = rows.map((item) => pickNumber(item, ['precipitation', 'avgPrecip', 'value']));
+  function renderDivisionChart() {
+    const rows = (
+      stationCountByDivision.value.length
+        ? stationCountByDivision.value
+        : stationCountByCity.value.map((item) => ({ name: item.city, value: item.count }))
+    ).slice(0, 12);
 
-    setPrecipTrendOptions({
+    setDivisionOptions({
       color: ['#38bdf8'],
       tooltip: { trigger: 'axis' },
-      grid: { left: 36, right: 16, top: 24, bottom: 28 },
-      xAxis: {
-        type: 'category',
-        boundaryGap: false,
-        data: xData,
-        axisLabel: { color: '#a9d5e7' },
-      },
-      yAxis: {
-        type: 'value',
-        splitLine: { lineStyle: { color: 'rgba(148, 216, 232, 0.14)' } },
-        axisLabel: { color: '#a9d5e7' },
-      },
-      series: [
-        {
-          type: 'line',
-          smooth: true,
-          symbolSize: 6,
-          areaStyle: { color: 'rgba(56, 189, 248, 0.18)' },
-          data: yData,
-        },
-      ],
-    });
-  }
-
-  function createBarOption(
-    data: WaterDashboardMap[],
-    nameKeys: string[],
-    valueKeys: string[],
-  ): EChartsOption {
-    const rows = data.length ? data : FALLBACK_STATIONS;
-    const yData = rows.map((item) => pickText(item, nameKeys));
-    const values = rows.map((item) => pickNumber(item, valueKeys));
-    return {
-      color: ['#22d3ee'],
-      tooltip: { trigger: 'axis' },
-      grid: { left: 68, right: 16, top: 18, bottom: 22 },
+      grid: { left: 74, right: 22, top: 20, bottom: 28 },
       xAxis: {
         type: 'value',
         splitLine: { lineStyle: { color: 'rgba(148, 216, 232, 0.14)' } },
@@ -670,16 +458,16 @@
       yAxis: {
         type: 'category',
         inverse: true,
-        data: yData,
-        axisLabel: { color: '#d7f7ff', width: 64, overflow: 'truncate' },
+        data: rows.map((item) => item.name || '未知'),
+        axisLabel: { color: '#d7f7ff', width: 70, overflow: 'truncate' },
       },
       series: [
         {
           type: 'bar',
-          barWidth: 10,
-          data: values,
+          barWidth: 12,
+          data: rows.map((item) => Number(item.value || 0)),
           itemStyle: {
-            borderRadius: 5,
+            borderRadius: 6,
             color: {
               type: 'linear',
               x: 0,
@@ -694,74 +482,118 @@
           },
         },
       ],
-    };
-  }
-
-  function getMockMarkerStyle(station: WaterStationMapVO) {
-    const longitudeMin = 89.4;
-    const longitudeMax = 103.1;
-    const latitudeMin = 31.6;
-    const latitudeMax = 39.3;
-    const left = ((Number(station.longitude) - longitudeMin) / (longitudeMax - longitudeMin)) * 100;
-    const top = (1 - (Number(station.latitude) - latitudeMin) / (latitudeMax - latitudeMin)) * 100;
-    return {
-      left: `${Math.min(Math.max(left, 8), 92)}%`,
-      top: `${Math.min(Math.max(top, 9), 91)}%`,
-    };
-  }
-
-  function startMockDrag(event: PointerEvent) {
-    const target = event.currentTarget as HTMLElement;
-    mockDragStart = {
-      pointerId: event.pointerId,
-      x: event.clientX,
-      y: event.clientY,
-      offsetX: mockOffset.x,
-      offsetY: mockOffset.y,
-    };
-    target.setPointerCapture?.(event.pointerId);
-    window.addEventListener('pointermove', handleMockDragMove);
-    window.addEventListener('pointerup', stopMockDrag);
-  }
-
-  function handleMockDragMove(event: PointerEvent) {
-    if (!mockDragStart || event.pointerId !== mockDragStart.pointerId) {
-      return;
-    }
-    mockOffset.x = mockDragStart.offsetX + event.clientX - mockDragStart.x;
-    mockOffset.y = mockDragStart.offsetY + event.clientY - mockDragStart.y;
-  }
-
-  function stopMockDrag() {
-    mockDragStart = null;
-    window.removeEventListener('pointermove', handleMockDragMove);
-    window.removeEventListener('pointerup', stopMockDrag);
-  }
-
-  function refreshTime() {
-    currentTime.value = new Date().toLocaleString('zh-CN', {
-      hour12: false,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
     });
   }
 
-  function buildOptions(list: WaterStationMapVO[], field: keyof WaterStationMapVO) {
-    return Array.from(new Set(list.map((item) => item[field]).filter(Boolean))).map((value) => ({
-      label: String(value),
-      value: String(value),
+  async function selectStation(station: WaterStationMapVO) {
+    selectedStation.value = station;
+    selectedStationDetail.value = null;
+    trendRows.value = [];
+    renderMapChart();
+    if (!station.stationCode) {
+      return;
+    }
+    detailLoading.value = true;
+    try {
+      const detail = await waterStationDetail(station.stationCode);
+      selectedStationDetail.value = detail;
+      trendRows.value = pickTrendRows(detail);
+      await nextTick();
+      renderDetailTrendChart();
+    } finally {
+      detailLoading.value = false;
+    }
+  }
+
+  function renderDetailTrendChart() {
+    if (!trendRows.value.length) {
+      return;
+    }
+    setDetailTrendOptions({
+      color: ['#67e8f9', '#22c55e'],
+      tooltip: { trigger: 'axis' },
+      grid: { left: 36, right: 16, top: 18, bottom: 24 },
+      xAxis: {
+        type: 'category',
+        data: trendRows.value.map((item) => pickText(item, ['year', 'name', 'label'])),
+        axisLabel: { color: '#a9d5e7' },
+      },
+      yAxis: {
+        type: 'value',
+        splitLine: { lineStyle: { color: 'rgba(148, 216, 232, 0.14)' } },
+        axisLabel: { color: '#a9d5e7' },
+      },
+      series: [
+        {
+          type: 'line',
+          smooth: true,
+          name: '趋势',
+          data: trendRows.value.map((item) =>
+            pickNumber(item, ['runoff', 'flow', 'precipitation', 'precip', 'value']),
+          ),
+        },
+      ],
+    });
+  }
+
+  function closeStationDetail() {
+    selectedStation.value = null;
+    selectedStationDetail.value = null;
+    trendRows.value = [];
+    renderMapChart();
+  }
+
+  function toScatterData(station: WaterStationMapVO) {
+    const color = getStationColor(station.stationType);
+    return {
+      name: station.stationName,
+      value: [Number(station.longitude), Number(station.latitude), 1],
+      raw: station,
+      itemStyle: {
+        color,
+        borderColor: '#fff',
+        borderWidth: 1.5,
+        shadowBlur: 12,
+        shadowColor: color,
+      },
+    };
+  }
+
+  function buildStationTypeRatio() {
+    const total = displayStations.value.length || 1;
+    return stationLegend.value.map((item) => ({
+      name: item.type,
+      value: item.count,
+      ratio: Number(((item.count / total) * 100).toFixed(2)),
+    }));
+  }
+
+  function pickTrendRows(detail: WaterDashboardMap | null) {
+    if (!detail) {
+      return [];
+    }
+    const rows = [
+      detail.trend,
+      detail.trends,
+      detail.recentTrend,
+      detail.recentTrends,
+      detail.flowTrend,
+      detail.precipTrend,
+      detail.yearTrend,
+    ].find((item) => Array.isArray(item));
+    return Array.isArray(rows) ? rows.slice(-5) : [];
+  }
+
+  function getMapRegionData() {
+    const features = (qinghaiGeoJson as any).features || [];
+    return features.map((feature: any) => ({
+      name: feature?.properties?.name,
+      value: displayStations.value.length,
     }));
   }
 
   function getSettledValue<T>(result: PromiseSettledResult<T>, fallback: T) {
     return result.status === 'fulfilled' && result.value ? result.value : fallback;
-  }
-
-  function pickOverview(...keys: string[]) {
-    return pickNumber(overview.value, keys);
   }
 
   function pickText(item: WaterDashboardMap, keys: string[]) {
@@ -788,12 +620,34 @@
     return Number.isFinite(Number(station.longitude)) && Number.isFinite(Number(station.latitude));
   }
 
+  function getStationColor(type?: string) {
+    return STATION_COLORS[type || ''] || '#f472b6';
+  }
+
   function formatNumber(value?: number) {
     const numberValue = Number(value);
     if (!Number.isFinite(numberValue)) {
       return '-';
     }
-    return Number.isInteger(numberValue) ? String(numberValue) : numberValue.toFixed(2);
+    return Number.isInteger(numberValue) ? numberValue.toLocaleString() : numberValue.toFixed(2);
+  }
+
+  function formatCoordinate(longitude?: number, latitude?: number) {
+    if (!Number.isFinite(Number(longitude)) || !Number.isFinite(Number(latitude))) {
+      return '-';
+    }
+    return `${Number(longitude).toFixed(4)}, ${Number(latitude).toFixed(4)}`;
+  }
+
+  function refreshTime() {
+    currentTime.value = new Date().toLocaleString('zh-CN', {
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   }
 </script>
 
@@ -804,37 +658,15 @@
     min-height: 760px;
     overflow: hidden;
     color: #dff7ff;
-    background: #061623;
-  }
-
-  .screen-map {
-    position: absolute;
-    inset: 0;
-    z-index: 1;
-    width: 100%;
-    height: 100%;
-    background: #0b2435;
-  }
-
-  .screen-vignette {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
-    pointer-events: none;
     background:
+      radial-gradient(circle at 50% 45%, rgba(14, 78, 142, 0.32), transparent 38%),
       linear-gradient(
         90deg,
-        rgba(5, 17, 28, 0.92) 0%,
-        rgba(5, 17, 28, 0.24) 34%,
-        rgba(5, 17, 28, 0.24) 66%,
-        rgba(5, 17, 28, 0.92) 100%
+        rgba(5, 17, 34, 0.94),
+        rgba(5, 17, 34, 0.1) 42%,
+        rgba(5, 17, 34, 0.94)
       ),
-      linear-gradient(
-        180deg,
-        rgba(5, 17, 28, 0.88) 0%,
-        rgba(5, 17, 28, 0.08) 24%,
-        rgba(5, 17, 28, 0.7) 100%
-      );
+      linear-gradient(180deg, #041226, #071d38 58%, #041226);
   }
 
   .screen-header {
@@ -849,8 +681,15 @@
     height: 94px;
     padding: 16px 28px;
     text-align: center;
-    background: linear-gradient(180deg, rgba(7, 31, 48, 0.96), rgba(7, 31, 48, 0));
+    background: linear-gradient(180deg, rgba(6, 24, 48, 0.98), rgba(6, 24, 48, 0));
+  }
 
+  .header-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.66));
+  }
+
+  .header-title {
     p {
       margin: 0;
       font-size: 12px;
@@ -867,12 +706,7 @@
     }
   }
 
-  .header-side-line {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.66));
-  }
-
-  .header-meta {
+  .header-tools {
     display: flex;
     gap: 12px;
     align-items: center;
@@ -881,27 +715,37 @@
     color: #b7eaff;
   }
 
+  .map-stage {
+    position: absolute;
+    inset: 74px 250px 74px;
+    z-index: 1;
+  }
+
+  .map-chart {
+    width: 100%;
+    height: 100%;
+  }
+
   .screen-panel {
     position: absolute;
-    top: 100px;
-    bottom: 78px;
+    top: 104px;
+    bottom: 82px;
     z-index: 4;
     display: grid;
     gap: 10px;
-    width: min(25vw, 420px);
-    min-width: 340px;
+    width: min(22vw, 350px);
+    min-width: 300px;
     overflow: hidden;
-    pointer-events: auto;
   }
 
   .left-panel {
     left: 18px;
-    grid-template-rows: minmax(178px, max-content) minmax(170px, 1fr) minmax(160px, 0.8fr);
+    grid-template-rows: minmax(160px, max-content) 1fr;
   }
 
   .right-panel {
     right: 18px;
-    grid-template-rows: minmax(160px, max-content) minmax(185px, 1fr) minmax(165px, 0.85fr);
+    grid-template-rows: 1fr 1.1fr;
   }
 
   .panel-section {
@@ -911,7 +755,7 @@
     min-height: 0;
     padding: 12px;
     overflow: hidden;
-    background: linear-gradient(180deg, rgba(9, 37, 58, 0.9), rgba(8, 25, 41, 0.78));
+    background: linear-gradient(180deg, rgba(8, 32, 62, 0.9), rgba(5, 20, 42, 0.78));
     border: 1px solid rgba(56, 189, 248, 0.24);
     border-radius: 8px;
     box-shadow:
@@ -931,98 +775,58 @@
   }
 
   .panel-title {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     font-size: 14px;
     font-weight: 800;
     color: #e0faff;
   }
 
-  .overview-grid {
-    display: grid;
-    align-content: center;
-    flex: 1 1 auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .filter-section {
     gap: 8px;
   }
 
-  .metric-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 44px;
-    padding: 7px 6px;
-    text-align: center;
-    background: rgba(15, 52, 75, 0.68);
-    border: 1px solid rgba(125, 211, 252, 0.16);
-    border-radius: 6px;
+  .filter-section :deep(.ant-select) {
+    width: 100%;
+  }
 
-    strong {
-      display: block;
-      font-size: 18px;
-      line-height: 1.1;
-      color: #67e8f9;
+  .filter-section :deep(.ant-select-selector) {
+    color: #e0faff !important;
+    background: rgba(6, 28, 55, 0.84) !important;
+    border-color: rgba(56, 189, 248, 0.28) !important;
+  }
+
+  .filter-section :deep(.ant-select-selection-placeholder) {
+    color: rgba(211, 241, 250, 0.64);
+  }
+
+  .legend-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .legend-item {
+    display: grid;
+    grid-template-columns: 12px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    color: #dff7ff;
+
+    i {
+      width: 10px;
+      height: 10px;
+      border: 1px solid #fff;
+      border-radius: 999px;
+      box-shadow: 0 0 12px currentColor;
     }
 
-    span {
-      display: block;
-      margin-top: 3px;
-      font-size: 12px;
-      line-height: 1.2;
-      color: #a9cbd8;
+    strong {
+      color: #67e8f9;
     }
   }
 
   .chart-box {
     flex: 1 1 auto;
     min-height: 0;
-    height: auto;
-  }
-
-  .chart-box.small {
-    height: auto;
-  }
-
-  .station-rank-section {
-    min-height: 0;
-  }
-
-  .basin-section {
-    min-height: 0;
-  }
-
-  .basin-chart {
-    height: auto;
-  }
-
-  .division-rank-section {
-    min-height: 0;
-  }
-
-  .precip-trend-section {
-    min-height: 0;
-  }
-
-  .filter-section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    min-height: 0;
-  }
-
-  .filter-section :deep(.ant-select) {
-    width: 100%;
-    flex: 0 0 auto;
-  }
-
-  .filter-section :deep(.ant-select-selector) {
-    color: #e0faff !important;
-    background: rgba(6, 28, 45, 0.82) !important;
-    border-color: rgba(56, 189, 248, 0.28) !important;
-  }
-
-  .filter-section :deep(.ant-select-selection-placeholder) {
-    color: rgba(211, 241, 250, 0.64);
   }
 
   .bottom-panel {
@@ -1039,24 +843,27 @@
   .bottom-stat {
     min-height: 62px;
     padding: 10px 12px;
-    background: rgba(8, 31, 48, 0.86);
+    background: rgba(8, 31, 58, 0.86);
     border: 1px solid rgba(56, 189, 248, 0.22);
     border-radius: 8px;
 
-    span {
+    span,
+    strong {
       display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    span {
       font-size: 12px;
       color: #a9cbd8;
     }
 
     strong {
-      display: block;
       margin-top: 4px;
-      overflow: hidden;
       font-size: 20px;
       color: #e0faff;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
   }
 
@@ -1065,9 +872,9 @@
     bottom: 102px;
     left: 50%;
     z-index: 6;
-    width: 420px;
+    width: 440px;
     padding: 18px;
-    background: linear-gradient(180deg, rgba(8, 34, 54, 0.96), rgba(6, 23, 38, 0.94));
+    background: linear-gradient(180deg, rgba(8, 34, 64, 0.96), rgba(6, 23, 44, 0.94));
     border: 1px solid rgba(103, 232, 249, 0.34);
     border-radius: 8px;
     box-shadow: 0 22px 72px rgba(0, 0, 0, 0.36);
@@ -1110,7 +917,6 @@
     font-size: 12px;
     font-weight: 800;
     color: #061623;
-    background: #67e8f9;
     border-radius: 6px;
   }
 
@@ -1129,93 +935,17 @@
     border-radius: 50%;
   }
 
+  .detail-chart {
+    height: 150px;
+    margin-top: 14px;
+  }
+
   .detail-extra {
     margin-top: 14px;
     padding-top: 12px;
     font-size: 12px;
     color: #9cd7ea;
     border-top: 1px solid rgba(148, 216, 232, 0.16);
-  }
-
-  .mock-map {
-    position: absolute;
-    inset: -90px;
-    cursor: grab;
-    touch-action: none;
-    background:
-      linear-gradient(120deg, rgba(56, 189, 248, 0.1) 0 1px, transparent 1px 100%),
-      radial-gradient(circle at 44% 42%, rgba(34, 197, 94, 0.28), transparent 32%),
-      radial-gradient(circle at 60% 58%, rgba(14, 165, 233, 0.22), transparent 34%),
-      linear-gradient(145deg, #113047, #092033);
-    background-size:
-      48px 48px,
-      auto,
-      auto,
-      auto;
-  }
-
-  .mock-map:active {
-    cursor: grabbing;
-  }
-
-  .mock-province {
-    position: absolute;
-    top: 15%;
-    left: 13%;
-    width: 74%;
-    height: 70%;
-    background: linear-gradient(145deg, rgba(20, 184, 166, 0.34), rgba(56, 189, 248, 0.24));
-    border: 2px solid rgba(103, 232, 249, 0.44);
-    border-radius: 38% 54% 42% 48% / 48% 36% 54% 42%;
-    box-shadow: 0 0 90px rgba(56, 189, 248, 0.18);
-    transform: rotate(-8deg) skew(-5deg);
-  }
-
-  .mock-marker {
-    position: absolute;
-    z-index: 2;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    cursor: pointer;
-    background: transparent;
-    border: 0;
-    transform: translate(-50%, -50%);
-
-    span {
-      position: absolute;
-      inset: 4px;
-      display: block;
-      background: #67e8f9;
-      border: 3px solid #e0faff;
-      border-radius: 999px 999px 999px 0;
-      box-shadow: 0 0 18px rgba(103, 232, 249, 0.72);
-      transform: rotate(-45deg);
-    }
-
-    &::after {
-      position: absolute;
-      inset: -10px;
-      content: '';
-      border: 1px solid #67e8f9;
-      border-radius: 999px;
-      opacity: 0.35;
-      animation: pulse 2.4s infinite;
-    }
-  }
-
-  .map-fallback-tip {
-    position: absolute;
-    right: 50%;
-    bottom: 104px;
-    z-index: 3;
-    padding: 7px 12px;
-    font-weight: 700;
-    color: #67e8f9;
-    background: rgba(8, 31, 48, 0.86);
-    border: 1px solid rgba(56, 189, 248, 0.22);
-    border-radius: 6px;
-    transform: translateX(50%);
   }
 
   .detail-panel-enter-active,
@@ -1229,70 +959,20 @@
     transform: translate(-50%, 12px);
   }
 
-  @keyframes pulse {
-    0% {
-      opacity: 0.35;
-      transform: scale(0.8);
-    }
-
-    70% {
-      opacity: 0;
-      transform: scale(1.55);
-    }
-
-    100% {
-      opacity: 0;
-      transform: scale(1.55);
-    }
-  }
-
-  @media (min-height: 900px) {
-    .screen-panel {
-      top: 108px;
-      bottom: 88px;
-      gap: 14px;
-    }
-
-    .left-panel {
-      grid-template-rows: minmax(230px, max-content) minmax(210px, 1fr) minmax(190px, 0.85fr);
-    }
-
-    .right-panel {
-      grid-template-rows: minmax(170px, max-content) minmax(220px, 1fr) minmax(190px, 0.85fr);
-    }
-
-    .panel-section {
-      padding: 14px;
-    }
-
-    .panel-title {
-      margin-bottom: 12px;
-      font-size: 15px;
-    }
-
-    .metric-cell {
-      min-height: 58px;
-      padding: 9px 8px;
-
-      strong {
-        font-size: 22px;
-      }
-    }
-
-    .overview-grid {
-      gap: 10px;
-    }
-  }
-
   @media (max-width: 1280px) {
     .screen-panel {
-      width: 330px;
-      min-width: 330px;
+      width: 300px;
+      min-width: 300px;
+    }
+
+    .map-stage {
+      right: 220px;
+      left: 220px;
     }
 
     .bottom-panel {
-      right: 360px;
-      left: 360px;
+      right: 320px;
+      left: 320px;
     }
   }
 </style>

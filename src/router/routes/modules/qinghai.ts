@@ -21,6 +21,14 @@ const qinghai: AppRouteModule = {
         title: '站点地图',
       },
     },
+    {
+      path: 'station-data',
+      name: 'QinghaiStationData',
+      component: () => import('@/views/qinghai/station-data/index.vue'),
+      meta: {
+        title: '基础数据',
+      },
+    },
   ],
 };
 
