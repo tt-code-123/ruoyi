@@ -1,121 +1,105 @@
 <template>
-  <PageWrapper contentFullHeight>
-    <div class="water-screen">
-      <header class="screen-header">
-        <div class="header-line"></div>
-        <div class="header-title">
-          <p>QINGHAI WATER RESOURCE DIGITAL MAP</p>
-          <h1>青海省水资源一张图</h1>
-        </div>
-        <div class="header-tools">
-          <span>{{ currentTime }}</span>
-          <a-button size="small" ghost :loading="loading" @click="loadDashboard">刷新</a-button>
-        </div>
-      </header>
+  <div class="water-screen">
+    <div class="map-toolbar">
+      <a-button size="small" ghost :loading="loading" @click="loadDashboard">刷新</a-button>
+    </div>
+    <main class="map-stage">
+      <div ref="mapChartRef" class="map-chart"></div>
+    </main>
 
-      <main class="map-stage">
-        <div ref="mapChartRef" class="map-chart"></div>
-      </main>
-
-      <aside class="screen-panel left-panel">
-        <section class="panel-section">
-          <div class="panel-title">站点类型图例</div>
-          <div class="legend-list">
-            <div
-              v-for="item in stationLegend"
-              :key="item.type"
-              class="legend-item"
-              :class="{ 'legend-item-inactive': !isStationTypeVisible(item.type) }"
-              role="button"
-              tabindex="0"
-              @click="toggleStationType(item.type)"
-              @keydown.enter.prevent="toggleStationType(item.type)"
-              @keydown.space.prevent="toggleStationType(item.type)"
-            >
-              <i :style="{ background: item.color }"></i>
-              <span>{{ item.type }}</span>
-              <strong>{{ item.count }}</strong>
-            </div>
-          </div>
-        </section>
-      </aside>
-
-      <aside class="screen-panel right-panel">
-        <section class="panel-section">
-          <div class="panel-title">流域站点占比</div>
-          <div ref="basinRatioChartRef" class="chart-box"></div>
-        </section>
-
-        <section class="panel-section">
-          <div class="panel-title">行政区站点数量统计</div>
-          <div ref="divisionChartRef" class="chart-box"></div>
-        </section>
-      </aside>
-
-      <footer class="bottom-panel">
-        <div v-for="item in bottomStationStats" :key="item.type" class="bottom-stat">
-          <Icon class="bottom-stat-icon" :icon="item.icon" :size="28" />
-          <div>
-            <span>{{ item.label }}</span>
+    <aside class="screen-panel left-panel">
+      <section class="panel-section">
+        <div class="panel-title">站点类型图例</div>
+        <div class="legend-list">
+          <div
+            v-for="item in stationLegend"
+            :key="item.type"
+            class="legend-item"
+            :class="{ 'legend-item-inactive': !isStationTypeVisible(item.type) }"
+            role="button"
+            tabindex="0"
+            @click="toggleStationType(item.type)"
+            @keydown.enter.prevent="toggleStationType(item.type)"
+            @keydown.space.prevent="toggleStationType(item.type)"
+          >
+            <i :style="{ background: item.color }"></i>
+            <span>{{ item.type }}</span>
             <strong>{{ item.count }}</strong>
           </div>
         </div>
-      </footer>
+      </section>
+    </aside>
 
-      <transition name="detail-panel">
-        <article v-if="selectedStation" class="station-detail">
-          <button type="button" class="detail-close" @click="closeStationDetail">×</button>
-          <span
-            class="station-badge"
-            :style="{ background: getStationColor(selectedStation.stationType) }"
-          >
-            {{ selectedStation.stationType || '站点' }}
-          </span>
-          <h2>{{ selectedStation.stationName || '-' }}</h2>
-          <p
-            >{{ selectedStation.riverSystem || '-' }} / {{ selectedStation.waterRegion3 || '-' }}</p
-          >
-          <dl>
-            <div>
-              <dt>测站编码</dt>
-              <dd>{{ selectedStation.stationCode || '-' }}</dd>
-            </div>
-            <div>
-              <dt>地区</dt>
-              <dd>{{ selectedStation.city || '-' }} {{ selectedStation.county || '' }}</dd>
-            </div>
-            <div>
-              <dt>经纬度</dt>
-              <dd>{{ formatCoordinate(selectedStation.longitude, selectedStation.latitude) }}</dd>
-            </div>
-            <div>
-              <dt>高程</dt>
-              <dd>{{ formatNumber(selectedStation.elevation) }} m</dd>
-            </div>
-            <div>
-              <dt>年均径流量</dt>
-              <dd>{{ formatNumber(selectedStation.avgRunoff5616) }} 亿m³</dd>
-            </div>
-            <div>
-              <dt>年均降水量</dt>
-              <dd>{{ formatNumber(selectedStation.avgPrecip5616) }} mm</dd>
-            </div>
-          </dl>
-          <div v-if="trendRows.length" ref="detailTrendChartRef" class="detail-chart"></div>
-          <div v-else class="detail-extra">{{
-            detailLoading ? '详情加载中...' : detailSummary
-          }}</div>
-        </article>
-      </transition>
-    </div>
-  </PageWrapper>
+    <aside class="screen-panel right-panel">
+      <section class="panel-section">
+        <div class="panel-title">流域站点占比</div>
+        <div ref="basinRatioChartRef" class="chart-box"></div>
+      </section>
+
+      <section class="panel-section">
+        <div class="panel-title">行政区站点数量统计</div>
+        <div ref="divisionChartRef" class="chart-box"></div>
+      </section>
+    </aside>
+
+    <footer class="bottom-panel">
+      <div v-for="item in bottomStationStats" :key="item.type" class="bottom-stat">
+        <Icon class="bottom-stat-icon" :icon="item.icon" :size="28" />
+        <div>
+          <span>{{ item.label }}</span>
+          <strong>{{ item.count }}</strong>
+        </div>
+      </div>
+    </footer>
+
+    <transition name="detail-panel">
+      <article v-if="selectedStation" class="station-detail">
+        <button type="button" class="detail-close" @click="closeStationDetail">×</button>
+        <span
+          class="station-badge"
+          :style="{ background: getStationColor(selectedStation.stationType) }"
+        >
+          {{ selectedStation.stationType || '站点' }}
+        </span>
+        <h2>{{ selectedStation.stationName || '-' }}</h2>
+        <p>{{ selectedStation.riverSystem || '-' }} / {{ selectedStation.waterRegion3 || '-' }}</p>
+        <dl>
+          <div>
+            <dt>测站编码</dt>
+            <dd>{{ selectedStation.stationCode || '-' }}</dd>
+          </div>
+          <div>
+            <dt>地区</dt>
+            <dd>{{ selectedStation.city || '-' }} {{ selectedStation.county || '' }}</dd>
+          </div>
+          <div>
+            <dt>经纬度</dt>
+            <dd>{{ formatCoordinate(selectedStation.longitude, selectedStation.latitude) }}</dd>
+          </div>
+          <div>
+            <dt>高程</dt>
+            <dd>{{ formatNumber(selectedStation.elevation) }} m</dd>
+          </div>
+          <div>
+            <dt>年均径流量</dt>
+            <dd>{{ formatNumber(selectedStation.avgRunoff5616) }} 亿m³</dd>
+          </div>
+          <div>
+            <dt>年均降水量</dt>
+            <dd>{{ formatNumber(selectedStation.avgPrecip5616) }} mm</dd>
+          </div>
+        </dl>
+        <div v-if="trendRows.length" ref="detailTrendChartRef" class="detail-chart"></div>
+        <!-- <div v-else class="detail-extra">{{ detailLoading ? '详情加载中...' : detailSummary }}</div> -->
+      </article>
+    </transition>
+  </div>
 </template>
 
 <script setup lang="ts">
   import type { Ref } from 'vue';
   import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
   import Icon from '@/components/Icon/Icon.vue';
-  import { PageWrapper } from '@/components/Page';
   import { useECharts } from '@/hooks/web/useECharts';
   import {
     waterDivisionMap,
@@ -233,7 +217,6 @@
     'dark',
   );
 
-  const currentTime = ref('');
   const loading = ref(false);
   const detailLoading = ref(false);
   const stationTypeRatio = ref<WaterChartRatioVO[]>([]);
@@ -246,7 +229,6 @@
   const selectedStationDetail = ref<WaterDashboardMap | null>(null);
   const trendRows = ref<WaterDashboardMap[]>([]);
 
-  let timer: number | undefined;
   let isRefreshingDashboard = false;
   let isMapRendered = false;
   let zrClickHandler: ((event: any) => void) | undefined;
@@ -323,8 +305,6 @@
   onMounted(async () => {
     echarts.registerMap(QINGHAI_MAP_NAME, qinghaiGeoJson as any);
     bindMapClick();
-    refreshTime();
-    timer = window.setInterval(refreshTime, 1000 * 30);
     await loadDashboard();
   });
 
@@ -332,9 +312,6 @@
     const zr = getMapInstance()?.getZr();
     if (zr && zrClickHandler) {
       zr.off('click', zrClickHandler);
-    }
-    if (timer) {
-      window.clearInterval(timer);
     }
   });
 
@@ -781,17 +758,6 @@
     }
     return `${Number(longitude).toFixed(4)}, ${Number(latitude).toFixed(4)}`;
   }
-
-  function refreshTime() {
-    currentTime.value = new Date().toLocaleString('zh-CN', {
-      hour12: false,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
 </script>
 
 <style scoped lang="less">
@@ -807,8 +773,8 @@
     --cyber-line: rgba(103, 232, 249, 0.32);
     --cyber-text: #e6fbff;
     position: relative;
-    height: calc(100vh - 88px);
-    min-height: 760px;
+    height: 100%;
+    min-height: 0;
     overflow: hidden;
     color: var(--cyber-text);
     background:
@@ -869,77 +835,14 @@
     opacity: 0.72;
   }
 
-  .screen-header {
+  .map-toolbar {
     position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
+    top: 10px;
+    right: 18px;
     z-index: 5;
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    height: 94px;
-    padding: 16px 28px;
-    text-align: center;
-    background:
-      linear-gradient(180deg, rgba(2, 8, 23, 0.98), rgba(2, 8, 23, 0.22), rgba(2, 8, 23, 0)),
-      linear-gradient(
-        90deg,
-        transparent,
-        rgba(56, 189, 248, 0.22),
-        rgba(129, 140, 248, 0.1),
-        transparent
-      );
-    border-bottom: 1px solid rgba(103, 232, 249, 0.22);
-    box-shadow: inset 0 -1px 0 rgba(129, 140, 248, 0.14);
   }
 
-  .header-line {
-    height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(103, 232, 249, 0.95),
-      rgba(129, 140, 248, 0.56),
-      transparent
-    );
-    box-shadow:
-      0 0 16px rgba(103, 232, 249, 0.58),
-      0 0 28px rgba(129, 140, 248, 0.22);
-  }
-
-  .header-title {
-    p {
-      margin: 0;
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--cyber-cyan);
-      letter-spacing: 0;
-      text-shadow: 0 0 12px rgba(103, 232, 249, 0.72);
-    }
-
-    h1 {
-      margin: 2px 0 0;
-      font-size: 34px;
-      font-weight: 900;
-      color: #f0fbff;
-      text-shadow:
-        0 0 10px rgba(103, 232, 249, 0.9),
-        0 0 24px rgba(56, 189, 248, 0.42),
-        0 0 38px rgba(129, 140, 248, 0.22);
-    }
-  }
-
-  .header-tools {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: flex-end;
-    font-weight: 700;
-    color: #c7f7ff;
-  }
-
-  .header-tools :deep(.ant-btn) {
+  .map-toolbar :deep(.ant-btn) {
     color: #e6fbff;
     background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(129, 140, 248, 0.08));
     border-color: rgba(103, 232, 249, 0.46);
@@ -950,7 +853,7 @@
 
   .map-stage {
     position: absolute;
-    inset: 74px 250px 74px;
+    inset: 0 250px 56px;
     z-index: 1;
   }
 
@@ -991,8 +894,8 @@
 
   .screen-panel {
     position: absolute;
-    top: 104px;
-    bottom: 82px;
+    top: 34px;
+    bottom: 72px;
     z-index: 4;
     display: grid;
     gap: 10px;
@@ -1178,7 +1081,7 @@
   .bottom-panel {
     position: absolute;
     right: 24%;
-    bottom: 18px;
+    bottom: 8px;
     left: 24%;
     z-index: 4;
     display: grid;
@@ -1264,7 +1167,7 @@
 
   .station-detail {
     position: absolute;
-    bottom: 102px;
+    bottom: 88px;
     left: 50%;
     z-index: 6;
     width: 440px;

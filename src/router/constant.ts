@@ -12,6 +12,11 @@ export const EXCEPTION_COMPONENT = () => import('@/layouts/components/exception/
 export const LAYOUT = () => import('@/layouts/default/index.vue');
 
 /**
+ * @description: Qinghai large-screen layout
+ */
+export const QINGHAI_SCREEN_LAYOUT = () => import('@/layouts/qinghai-screen/index.vue');
+
+/**
  * @description: parent-layout
  */
 export const getParentLayout = (_name?: string) => {

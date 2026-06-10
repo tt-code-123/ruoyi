@@ -1,5 +1,5 @@
 <template>
-  <PageWrapper dense>
+  <div class="station-data-screen">
     <div class="station-overview">
       <div v-for="item in overviewCards" :key="item.type" class="overview-card">
         <span class="overview-card-icon" :class="getStationTypeClass(item.type)">
@@ -63,12 +63,11 @@
 
     <StationModal @register="registerModal" @reload="handleReload" />
     <StationImportModal @register="registerImportModal" @reload="handleReload" />
-  </PageWrapper>
+  </div>
 </template>
 
 <script setup lang="ts">
   import { onMounted, ref } from 'vue';
-  import { PageWrapper } from '@/components/Page';
   import { BasicTable, TableAction, useTable } from '@/components/Table';
   import { useModal } from '@/components/Modal';
   import Icon from '@/components/Icon/Icon.vue';
@@ -185,22 +184,53 @@
 </script>
 
 <style scoped lang="less">
+  .station-data-screen {
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    color: #e6fbff;
+  }
+
   .station-overview {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
-    padding: 16px 16px 0;
+    padding: 0 0 12px;
   }
 
   .overview-card {
+    position: relative;
     display: flex;
-    align-items: center;
     gap: 14px;
+    align-items: center;
     min-height: 88px;
     padding: 14px 16px;
-    background: #fff;
-    border: 1px solid #edf1f7;
-    border-radius: 8px;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, rgba(103, 232, 249, 0.16), transparent 34%),
+      linear-gradient(315deg, rgba(129, 140, 248, 0.12), transparent 38%), rgba(6, 22, 48, 0.82);
+    border: 1px solid rgba(103, 232, 249, 0.28);
+    border-radius: 6px;
+    box-shadow:
+      inset 0 0 18px rgba(103, 232, 249, 0.08),
+      0 10px 28px rgba(0, 0, 0, 0.24),
+      0 0 18px rgba(56, 189, 248, 0.08);
+  }
+
+  .overview-card::before {
+    position: absolute;
+    top: 0;
+    right: 14px;
+    left: 14px;
+    height: 1px;
+    content: '';
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(103, 232, 249, 0.9),
+      rgba(129, 140, 248, 0.5),
+      transparent
+    );
   }
 
   .overview-card-icon {
@@ -210,28 +240,32 @@
     justify-content: center;
     width: 48px;
     height: 48px;
-    color: #1677ff;
-    background: #eaf4ff;
-    border-radius: 8px;
+    color: #67e8f9;
+    background: rgba(14, 165, 233, 0.16);
+    border: 1px solid rgba(103, 232, 249, 0.24);
+    border-radius: 6px;
+    box-shadow:
+      inset 0 0 12px rgba(103, 232, 249, 0.08),
+      0 0 16px rgba(56, 189, 248, 0.12);
 
     &.is-weather {
-      color: #d97706;
-      background: #fff7e6;
+      color: #fbbf24;
+      background: rgba(251, 191, 36, 0.14);
     }
 
     &.is-rain {
-      color: #2563eb;
-      background: #eff6ff;
+      color: #60a5fa;
+      background: rgba(96, 165, 250, 0.14);
     }
 
     &.is-river {
-      color: #0891b2;
-      background: #ecfeff;
+      color: #22d3ee;
+      background: rgba(34, 211, 238, 0.14);
     }
 
     &.is-hydrology {
-      color: #0f766e;
-      background: #f0fdfa;
+      color: #2dd4bf;
+      background: rgba(45, 212, 191, 0.14);
     }
   }
 
@@ -241,7 +275,7 @@
     span,
     em {
       display: block;
-      color: #6b7280;
+      color: #a7f3ff;
       font-style: normal;
     }
 
@@ -250,8 +284,188 @@
       margin: 6px 0 2px;
       font-size: 28px;
       line-height: 1;
-      color: #1f2937;
+      color: #f0fbff;
+      text-shadow:
+        0 0 12px rgba(103, 232, 249, 0.56),
+        0 0 22px rgba(56, 189, 248, 0.22);
     }
+  }
+
+  .station-data-screen :deep(.vben-basic-table) {
+    height: calc(100% - 100px);
+    padding: 14px;
+    overflow: hidden;
+    background:
+      linear-gradient(135deg, rgba(103, 232, 249, 0.14), transparent 26%),
+      linear-gradient(315deg, rgba(129, 140, 248, 0.1), transparent 30%), rgba(4, 18, 42, 0.82);
+    border: 1px solid rgba(103, 232, 249, 0.24);
+    border-radius: 6px;
+    box-shadow:
+      inset 0 0 20px rgba(103, 232, 249, 0.08),
+      0 12px 32px rgba(0, 0, 0, 0.28);
+  }
+
+  .station-data-screen :deep(.vben-basic-table-form-container) {
+    padding: 0;
+    background: transparent;
+  }
+
+  .station-data-screen :deep(.vben-basic-form) {
+    padding: 14px 14px 4px;
+    margin-bottom: 8px;
+    background:
+      linear-gradient(90deg, rgba(103, 232, 249, 0.08), transparent 52%), rgba(2, 8, 23, 0.2);
+    border: 1px solid rgba(103, 232, 249, 0.12);
+    border-radius: 4px;
+  }
+
+  .station-data-screen :deep(.ant-form),
+  .station-data-screen :deep(.ant-table-wrapper),
+  .station-data-screen :deep(.ant-table),
+  .station-data-screen :deep(.ant-table-container),
+  .station-data-screen :deep(.ant-table-content) {
+    color: #dff7ff;
+    background: transparent;
+  }
+
+  .station-data-screen :deep(.ant-table-title),
+  .station-data-screen :deep(.vben-basic-table-header__title),
+  .station-data-screen :deep(.vben-basic-title),
+  .station-data-screen :deep(.vben-basic-table-title) {
+    color: #f0fbff;
+    font-weight: 800;
+    text-shadow:
+      0 0 12px rgba(103, 232, 249, 0.58),
+      0 0 22px rgba(56, 189, 248, 0.22);
+  }
+
+  .station-data-screen :deep(.ant-table-thead > tr > th) {
+    color: #c7f7ff;
+    background: rgba(10, 38, 76, 0.92);
+    border-bottom: 1px solid rgba(103, 232, 249, 0.22);
+  }
+
+  .station-data-screen :deep(.ant-table-thead > tr > th.ant-table-cell-fix-right),
+  .station-data-screen :deep(.ant-table-tbody > tr > td.ant-table-cell-fix-right) {
+    background: linear-gradient(90deg, rgba(4, 18, 42, 0.98), rgba(10, 38, 76, 0.98)), #06162e;
+    box-shadow:
+      -10px 0 18px rgba(2, 8, 23, 0.46),
+      inset 1px 0 0 rgba(103, 232, 249, 0.18);
+  }
+
+  .station-data-screen :deep(.ant-table-tbody > tr > td) {
+    color: #dff7ff;
+    background: rgba(3, 14, 34, 0.54);
+    border-bottom: 1px solid rgba(103, 232, 249, 0.12);
+  }
+
+  .station-data-screen :deep(.ant-table-tbody > tr:hover > td) {
+    background: rgba(14, 165, 233, 0.16);
+  }
+
+  .station-data-screen :deep(.ant-input),
+  .station-data-screen :deep(.ant-input-affix-wrapper),
+  .station-data-screen :deep(.ant-picker),
+  .station-data-screen :deep(.ant-select-selector) {
+    color: #e6fbff;
+    background: rgba(2, 8, 23, 0.68) !important;
+    border-color: rgba(103, 232, 249, 0.28) !important;
+    box-shadow:
+      inset 0 0 14px rgba(103, 232, 249, 0.08),
+      0 0 12px rgba(56, 189, 248, 0.08);
+  }
+
+  .station-data-screen :deep(.ant-input-affix-wrapper .ant-input) {
+    background: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none;
+  }
+
+  .station-data-screen :deep(.ant-input::placeholder),
+  .station-data-screen :deep(.ant-select-selection-placeholder),
+  .station-data-screen :deep(.ant-picker-input > input::placeholder) {
+    color: rgba(211, 241, 250, 0.56);
+  }
+
+  .station-data-screen :deep(.ant-form-item-label > label),
+  .station-data-screen :deep(.ant-pagination),
+  .station-data-screen :deep(.ant-pagination-total-text),
+  .station-data-screen :deep(.ant-select-selection-item),
+  .station-data-screen :deep(.ant-picker-input > input),
+  .station-data-screen :deep(.ant-select-arrow),
+  .station-data-screen :deep(.ant-picker-suffix),
+  .station-data-screen :deep(.ant-input-prefix),
+  .station-data-screen :deep(.ant-input-suffix) {
+    color: #c7f7ff;
+  }
+
+  .station-data-screen :deep(.ant-pagination-item),
+  .station-data-screen :deep(.ant-pagination-prev .ant-pagination-item-link),
+  .station-data-screen :deep(.ant-pagination-next .ant-pagination-item-link),
+  .station-data-screen :deep(.ant-pagination-options-quick-jumper input) {
+    background: rgba(2, 8, 23, 0.62);
+    border-color: rgba(103, 232, 249, 0.26);
+  }
+
+  .station-data-screen :deep(.ant-pagination-item a),
+  .station-data-screen :deep(.ant-pagination-prev .ant-pagination-item-link),
+  .station-data-screen :deep(.ant-pagination-next .ant-pagination-item-link),
+  .station-data-screen :deep(.ant-pagination-jump-prev .ant-pagination-item-container),
+  .station-data-screen :deep(.ant-pagination-jump-next .ant-pagination-item-container),
+  .station-data-screen :deep(.ant-pagination-options-quick-jumper),
+  .station-data-screen :deep(.ant-pagination-options-quick-jumper input) {
+    color: #c7f7ff;
+  }
+
+  .station-data-screen :deep(.ant-pagination-item-active) {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.92), rgba(37, 99, 235, 0.92));
+    border-color: rgba(103, 232, 249, 0.72);
+    box-shadow: 0 0 16px rgba(56, 189, 248, 0.24);
+  }
+
+  .station-data-screen :deep(.ant-pagination-item-active a) {
+    color: #ffffff;
+  }
+
+  .station-data-screen :deep(.ant-pagination-disabled .ant-pagination-item-link),
+  .station-data-screen :deep(.ant-pagination-item-ellipsis) {
+    color: rgba(199, 247, 255, 0.42);
+  }
+
+  .station-data-screen :deep(.ant-btn-default) {
+    color: #e6fbff;
+    background:
+      linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(129, 140, 248, 0.06)),
+      rgba(2, 8, 23, 0.5);
+    border-color: rgba(103, 232, 249, 0.32);
+    box-shadow: inset 0 0 12px rgba(103, 232, 249, 0.06);
+  }
+
+  .station-data-screen :deep(.ant-btn-primary) {
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+    border-color: rgba(103, 232, 249, 0.52);
+    box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+  }
+
+  .station-data-screen :deep(.ant-btn-primary.ant-btn-background-ghost) {
+    color: #67e8f9;
+    background: rgba(14, 165, 233, 0.1);
+    border-color: rgba(103, 232, 249, 0.44);
+  }
+
+  .station-data-screen :deep(.ant-btn-primary.ant-btn-dangerous.ant-btn-background-ghost) {
+    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(252, 165, 165, 0.42);
+  }
+
+  .station-data-screen :deep(.ant-btn-primary.ant-btn-dangerous.is-disabled),
+  .station-data-screen :deep(.ant-btn-primary.ant-btn-dangerous.is-disabled:hover) {
+    color: rgba(252, 165, 165, 0.62);
+    cursor: not-allowed;
+    background: rgba(127, 29, 29, 0.2);
+    border-color: rgba(252, 165, 165, 0.28);
+    box-shadow: none;
   }
 
   @media (max-width: 1200px) {
