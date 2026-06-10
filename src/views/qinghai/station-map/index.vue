@@ -138,7 +138,8 @@
 
   const QINGHAI_MAP_NAME = 'qinghai-water';
   const QINGHAI_CENTER: [number, number] = [96.04, 35.72];
-  const SELECTED_STATION_SERIES_ID = 'selected-station-effect';
+  const STATION_SERIES_ID = 'station-point-layer';
+  const STATION_CLICK_RADIUS = 14;
   const MAP_AREA_COLOR = '#073b73';
   const MAP_EMPHASIS_COLOR = '#0f5fa8';
   const MAP_BORDER_COLOR = '#93c5fd';
@@ -246,6 +247,9 @@
   const trendRows = ref<WaterDashboardMap[]>([]);
 
   let timer: number | undefined;
+  let isRefreshingDashboard = false;
+  let isMapRendered = false;
+  let zrClickHandler: ((event: any) => void) | undefined;
 
   const allValidStations = computed(() =>
     stationMapData.value.filter((station) => isValidCoordinate(station)),
@@ -255,6 +259,14 @@
     allValidStations.value.filter(
       (station) => !station.stationType || isStationTypeVisible(station.stationType),
     ),
+  );
+
+  const stationTypeCounts = computed(() => countStationsByType(allValidStations.value));
+
+  const visibleStationTypeCounts = computed(() => countStationsByType(displayStations.value));
+
+  const selectedStationKey = computed(() =>
+    selectedStation.value ? getStationKey(selectedStation.value) : '',
   );
 
   const stationLegend = computed(() => {
@@ -269,7 +281,7 @@
     return types.map((type) => ({
       type,
       color: getStationColor(type),
-      count: allValidStations.value.filter((station) => station.stationType === type).length,
+      count: stationTypeCounts.value.get(type) || 0,
     }));
   });
 
@@ -317,6 +329,10 @@
   });
 
   onBeforeUnmount(() => {
+    const zr = getMapInstance()?.getZr();
+    if (zr && zrClickHandler) {
+      zr.off('click', zrClickHandler);
+    }
     if (timer) {
       window.clearInterval(timer);
     }
@@ -331,11 +347,15 @@
     ) {
       closeStationDetail();
     }
-    renderMapChart();
+    if (isRefreshingDashboard) {
+      return;
+    }
+    updateStationSeries();
   });
 
   async function loadDashboard() {
     loading.value = true;
+    isRefreshingDashboard = true;
     try {
       const [
         typeRatioResult,
@@ -356,10 +376,12 @@
       stationCountByCity.value = getSettledValue(cityCountResult, []);
       stationMapData.value = getSettledValue(stationMapResult, FALLBACK_STATIONS);
       divisionMapData.value = getSettledValue(divisionMapResult, []);
+      isRefreshingDashboard = false;
       renderMapChart();
       renderBasinRatioChart();
       renderDivisionChart();
     } finally {
+      isRefreshingDashboard = false;
       loading.value = false;
     }
   }
@@ -367,56 +389,43 @@
   function bindMapClick() {
     nextTick(() => {
       const instance = getMapInstance();
-      instance?.off('click');
-      instance?.on('click', (params: any) => {
-        if (
-          params?.componentSubType === 'scatter' ||
-          params?.componentSubType === 'effectScatter'
-        ) {
-          selectStation(params.data.raw);
+      const zr = instance?.getZr();
+      if (!zr) {
+        return;
+      }
+      if (zrClickHandler) {
+        zr.off('click', zrClickHandler);
+      }
+      zrClickHandler = (event: any) => {
+        const station = findNearestStation(event.offsetX, event.offsetY);
+        if (station) {
+          selectStation(station);
         }
-      });
+      };
+      zr.on('click', zrClickHandler);
     });
   }
 
   function renderMapChart() {
     setMapOptions({
-      tooltip: {
-        trigger: 'item',
-        formatter(params: any) {
-          const raw = params.data?.raw;
-          if (!raw) {
-            return `${params.name}<br/>站点 ${displayStations.value.length} 个`;
-          }
-          return [
-            `<strong>${raw.stationName || '-'}</strong>`,
-            `站别：${raw.stationType || '-'}`,
-            `地区：${raw.city || '-'} ${raw.county || ''}`,
-            `水系：${raw.riverSystem || '-'}`,
-          ].join('<br/>');
-        },
-      },
+      tooltip: { show: false },
       geo: createMapGeoOption(),
       series: [
         {
-          id: 'station-scatter',
-          type: 'scatter',
+          id: STATION_SERIES_ID,
+          type: 'custom' as any,
           coordinateSystem: 'geo',
-          symbolSize: 9,
-          zlevel: 3,
-          data: displayStations.value.map(toScatterData),
-        },
-        {
-          id: SELECTED_STATION_SERIES_ID,
-          type: 'effectScatter',
-          coordinateSystem: 'geo',
-          symbolSize: 13,
-          rippleEffect: { brushType: 'stroke', scale: 3 },
-          zlevel: 4,
-          data: getSelectedStationData(),
+          z: 3,
+          silent: true,
+          animation: false,
+          progressive: 400,
+          progressiveThreshold: 800,
+          renderItem: renderStationPoint,
+          data: displayStations.value.map(toStationPointData),
         },
       ],
     });
+    isMapRendered = true;
     bindMapClick();
   }
 
@@ -590,38 +599,115 @@
   }
 
   function countVisibleStationsByType(type: string) {
-    return displayStations.value.filter((station) => station.stationType === type).length;
+    return visibleStationTypeCounts.value.get(type) || 0;
   }
 
-  function updateSelectedStationEffect() {
+  function updateStationSeries() {
+    if (!isMapRendered) {
+      renderMapChart();
+      return;
+    }
     getMapInstance()?.setOption({
       series: [
         {
-          id: SELECTED_STATION_SERIES_ID,
-          data: getSelectedStationData(),
+          id: STATION_SERIES_ID,
+          data: displayStations.value.map(toStationPointData),
         },
       ],
     });
   }
 
-  function getSelectedStationData() {
-    return selectedStation.value ? [toScatterData(selectedStation.value)] : [];
+  function updateSelectedStationEffect() {
+    updateStationSeries();
   }
 
-  function toScatterData(station: WaterStationMapVO) {
+  function toStationPointData(station: WaterStationMapVO) {
     const color = getStationColor(station.stationType);
+    const stationKey = getStationKey(station);
     return {
       name: station.stationName,
-      value: [Number(station.longitude), Number(station.latitude), 1],
-      raw: station,
+      value: [
+        Number(station.longitude),
+        Number(station.latitude),
+        color,
+        stationKey === selectedStationKey.value ? 1 : 0,
+      ],
+      stationKey,
       itemStyle: {
         color,
         borderColor: '#fff',
         borderWidth: 1.5,
-        shadowBlur: 12,
+        shadowBlur: 6,
         shadowColor: color,
       },
     };
+  }
+
+  function renderStationPoint(params: any, api: any) {
+    const point = api.coord([api.value(0), api.value(1)]);
+    if (!point) {
+      return null;
+    }
+    const color = api.value(2) || '#93c5fd';
+    const isSelected = api.value(3) === 1;
+    return {
+      type: 'circle' as const,
+      shape: {
+        cx: point[0],
+        cy: point[1],
+        r: isSelected ? 7 : 4.5,
+      },
+      style: {
+        fill: color,
+        stroke: '#fff',
+        lineWidth: isSelected ? 2 : 1,
+        shadowBlur: isSelected ? 8 : 0,
+        shadowColor: color,
+      },
+      silent: true,
+    };
+  }
+
+  function findNearestStation(offsetX: number, offsetY: number) {
+    const instance = getMapInstance();
+    if (!instance) {
+      return undefined;
+    }
+
+    let nearestStation: WaterStationMapVO | undefined;
+    let nearestDistance = STATION_CLICK_RADIUS * STATION_CLICK_RADIUS;
+    displayStations.value.forEach((station) => {
+      const point = instance.convertToPixel({ geoIndex: 0 }, [
+        Number(station.longitude),
+        Number(station.latitude),
+      ]) as number[] | undefined;
+      if (!point) {
+        return;
+      }
+      const distance = (point[0] - offsetX) ** 2 + (point[1] - offsetY) ** 2;
+      if (distance <= nearestDistance) {
+        nearestDistance = distance;
+        nearestStation = station;
+      }
+    });
+    return nearestStation;
+  }
+
+  function countStationsByType(stations: WaterStationMapVO[]) {
+    return stations.reduce((counts, station) => {
+      if (station.stationType) {
+        counts.set(station.stationType, (counts.get(station.stationType) || 0) + 1);
+      }
+      return counts;
+    }, new Map<string, number>());
+  }
+
+  function getStationKey(station: WaterStationMapVO) {
+    return String(
+      station.stationCode ||
+        station.stationId ||
+        `${station.stationName || '-'}-${station.longitude || '-'}-${station.latitude || '-'}`,
+    );
   }
 
   function buildStationTypeRatio() {
@@ -678,7 +764,7 @@
   }
 
   function getStationColor(type?: string) {
-    return STATION_COLORS[type || ''] || '#f472b6';
+    return STATION_COLORS[type || ''] || '#818cf8';
   }
 
   function formatNumber(value?: number) {
@@ -710,19 +796,35 @@
 
 <style scoped lang="less">
   .water-screen {
+    --cyber-bg: #020817;
+    --cyber-panel: rgba(3, 16, 39, 0.78);
+    --cyber-panel-strong: rgba(7, 26, 62, 0.92);
+    --cyber-blue: #38bdf8;
+    --cyber-blue-soft: rgba(56, 189, 248, 0.38);
+    --cyber-cyan: #67e8f9;
+    --cyber-indigo: #818cf8;
+    --cyber-violet: #8b5cf6;
+    --cyber-line: rgba(103, 232, 249, 0.32);
+    --cyber-text: #e6fbff;
     position: relative;
     height: calc(100vh - 88px);
     min-height: 760px;
     overflow: hidden;
-    color: #dff7ff;
+    color: var(--cyber-text);
     background:
-      linear-gradient(rgba(147, 197, 253, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(147, 197, 253, 0.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(2, 8, 23, 0.96), rgba(8, 31, 62, 0.22) 43%, rgba(2, 8, 23, 0.96)),
-      linear-gradient(180deg, #020817, #092f66 52%, #020817);
+      linear-gradient(rgba(103, 232, 249, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(103, 232, 249, 0.055) 1px, transparent 1px),
+      radial-gradient(circle at 50% 38%, rgba(14, 165, 233, 0.26), transparent 35%),
+      radial-gradient(circle at 16% 18%, rgba(129, 140, 248, 0.2), transparent 28%),
+      radial-gradient(circle at 82% 82%, rgba(139, 92, 246, 0.18), transparent 28%),
+      linear-gradient(90deg, rgba(2, 8, 23, 0.98), rgba(5, 36, 84, 0.62) 48%, rgba(2, 8, 23, 0.98)),
+      linear-gradient(180deg, #020817, #071a3e 48%, #020817);
     background-size:
-      28px 28px,
-      28px 28px,
+      30px 30px,
+      30px 30px,
+      100% 100%,
+      100% 100%,
+      100% 100%,
       100% 100%,
       100% 100%;
   }
@@ -738,39 +840,33 @@
 
   .water-screen::before {
     background:
-      linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.18), transparent),
+      linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.22), transparent),
       linear-gradient(
         180deg,
-        rgba(147, 197, 253, 0.07),
-        transparent 22%,
+        rgba(129, 140, 248, 0.12),
+        transparent 20%,
         transparent 78%,
-        rgba(147, 197, 253, 0.07)
-      );
+        rgba(56, 189, 248, 0.12)
+      ),
+      linear-gradient(180deg, transparent 0 48%, rgba(103, 232, 249, 0.1) 49%, transparent 51% 100%);
     mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 86%, transparent 100%);
   }
 
   .water-screen::after {
     background:
-      repeating-linear-gradient(
-        0deg,
-        rgba(255, 255, 255, 0.035) 0,
-        rgba(255, 255, 255, 0.035) 1px,
-        transparent 1px,
-        transparent 7px
-      ),
       linear-gradient(
         115deg,
-        transparent 0 42%,
-        rgba(96, 165, 250, 0.08) 43% 44%,
-        transparent 45% 100%
+        transparent 0 39%,
+        rgba(103, 232, 249, 0.14) 40% 40.4%,
+        transparent 41% 100%
       ),
       linear-gradient(
         65deg,
-        transparent 0 50%,
-        rgba(59, 130, 246, 0.08) 51% 52%,
-        transparent 53% 100%
+        transparent 0 55%,
+        rgba(129, 140, 248, 0.12) 56% 56.4%,
+        transparent 57% 100%
       );
-    opacity: 0.7;
+    opacity: 0.72;
   }
 
   .screen-header {
@@ -786,9 +882,16 @@
     padding: 16px 28px;
     text-align: center;
     background:
-      linear-gradient(180deg, rgba(3, 15, 33, 0.98), rgba(3, 15, 33, 0)),
-      linear-gradient(90deg, transparent, rgba(96, 165, 250, 0.16), transparent);
-    border-bottom: 1px solid rgba(147, 197, 253, 0.1);
+      linear-gradient(180deg, rgba(2, 8, 23, 0.98), rgba(2, 8, 23, 0.22), rgba(2, 8, 23, 0)),
+      linear-gradient(
+        90deg,
+        transparent,
+        rgba(56, 189, 248, 0.22),
+        rgba(129, 140, 248, 0.1),
+        transparent
+      );
+    border-bottom: 1px solid rgba(103, 232, 249, 0.22);
+    box-shadow: inset 0 -1px 0 rgba(129, 140, 248, 0.14);
   }
 
   .header-line {
@@ -796,11 +899,13 @@
     background: linear-gradient(
       90deg,
       transparent,
-      rgba(147, 197, 253, 0.9),
-      rgba(96, 165, 250, 0.5),
+      rgba(103, 232, 249, 0.95),
+      rgba(129, 140, 248, 0.56),
       transparent
     );
-    box-shadow: 0 0 18px rgba(96, 165, 250, 0.54);
+    box-shadow:
+      0 0 16px rgba(103, 232, 249, 0.58),
+      0 0 28px rgba(129, 140, 248, 0.22);
   }
 
   .header-title {
@@ -808,8 +913,9 @@
       margin: 0;
       font-size: 12px;
       font-weight: 700;
-      color: #7dd3fc;
-      text-shadow: 0 0 12px rgba(125, 211, 252, 0.68);
+      color: var(--cyber-cyan);
+      letter-spacing: 0;
+      text-shadow: 0 0 12px rgba(103, 232, 249, 0.72);
     }
 
     h1 {
@@ -818,8 +924,9 @@
       font-weight: 900;
       color: #f0fbff;
       text-shadow:
-        0 0 12px rgba(147, 197, 253, 0.82),
-        0 0 34px rgba(96, 165, 250, 0.28);
+        0 0 10px rgba(103, 232, 249, 0.9),
+        0 0 24px rgba(56, 189, 248, 0.42),
+        0 0 38px rgba(129, 140, 248, 0.22);
     }
   }
 
@@ -829,16 +936,16 @@
     align-items: center;
     justify-content: flex-end;
     font-weight: 700;
-    color: #b7eaff;
+    color: #c7f7ff;
   }
 
   .header-tools :deep(.ant-btn) {
-    color: #dff7ff;
-    background: rgba(6, 28, 55, 0.46);
-    border-color: rgba(147, 197, 253, 0.45);
+    color: #e6fbff;
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.18), rgba(129, 140, 248, 0.08));
+    border-color: rgba(103, 232, 249, 0.46);
     box-shadow:
-      inset 0 0 16px rgba(147, 197, 253, 0.08),
-      0 0 18px rgba(96, 165, 250, 0.16);
+      inset 0 0 16px rgba(103, 232, 249, 0.1),
+      0 0 18px rgba(56, 189, 248, 0.18);
   }
 
   .map-stage {
@@ -857,21 +964,21 @@
 
   .map-stage::before {
     background:
-      linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.08), transparent),
-      linear-gradient(180deg, transparent, rgba(96, 165, 250, 0.1), transparent);
-    border: 1px solid rgba(147, 197, 253, 0.08);
+      linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.12), transparent),
+      linear-gradient(180deg, transparent, rgba(129, 140, 248, 0.1), transparent);
+    border: 1px solid rgba(103, 232, 249, 0.12);
     box-shadow:
-      inset 0 0 80px rgba(147, 197, 253, 0.08),
-      0 0 90px rgba(96, 165, 250, 0.08);
+      inset 0 0 42px rgba(103, 232, 249, 0.08),
+      0 0 38px rgba(56, 189, 248, 0.08);
     transform: skewX(-6deg);
   }
 
   .map-stage::after {
     inset: 13% 18%;
-    border: 1px solid rgba(125, 211, 252, 0.12);
+    border: 1px solid rgba(129, 140, 248, 0.14);
     box-shadow:
-      0 0 36px rgba(147, 197, 253, 0.11),
-      inset 0 0 36px rgba(147, 197, 253, 0.05);
+      0 0 18px rgba(129, 140, 248, 0.1),
+      inset 0 0 18px rgba(103, 232, 249, 0.06);
     transform: skewX(8deg);
   }
 
@@ -912,15 +1019,16 @@
     padding: 14px;
     overflow: hidden;
     background:
-      linear-gradient(135deg, rgba(147, 197, 253, 0.12), transparent 22%),
-      linear-gradient(180deg, rgba(12, 45, 92, 0.74), rgba(2, 8, 23, 0.74));
-    border: 1px solid rgba(147, 197, 253, 0.3);
-    border-radius: 8px;
-    backdrop-filter: blur(12px);
+      linear-gradient(135deg, rgba(103, 232, 249, 0.16), transparent 24%),
+      linear-gradient(315deg, rgba(129, 140, 248, 0.1), transparent 28%),
+      linear-gradient(180deg, var(--cyber-panel-strong), var(--cyber-panel));
+    border: 1px solid var(--cyber-line);
+    border-radius: 6px;
     box-shadow:
-      inset 0 0 34px rgba(147, 197, 253, 0.08),
-      0 0 0 1px rgba(125, 211, 252, 0.04),
-      0 20px 56px rgba(0, 0, 0, 0.34);
+      inset 0 0 20px rgba(103, 232, 249, 0.08),
+      inset 0 -1px 0 rgba(129, 140, 248, 0.16),
+      0 12px 30px rgba(0, 0, 0, 0.34),
+      0 0 22px rgba(56, 189, 248, 0.08);
   }
 
   .panel-section::before {
@@ -930,8 +1038,16 @@
     left: 16px;
     height: 1px;
     content: '';
-    background: linear-gradient(90deg, transparent, #93c5fd, rgba(96, 165, 250, 0.72), transparent);
-    box-shadow: 0 0 18px rgba(96, 165, 250, 0.66);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--cyber-cyan),
+      var(--cyber-indigo),
+      transparent
+    );
+    box-shadow:
+      0 0 18px rgba(103, 232, 249, 0.56),
+      0 0 24px rgba(129, 140, 248, 0.22);
   }
 
   .panel-section::after {
@@ -941,8 +1057,8 @@
     width: 7px;
     height: 7px;
     content: '';
-    border-top: 1px solid rgba(147, 197, 253, 0.76);
-    border-right: 1px solid rgba(147, 197, 253, 0.76);
+    border-top: 1px solid rgba(103, 232, 249, 0.86);
+    border-right: 1px solid rgba(129, 140, 248, 0.72);
   }
 
   .panel-title {
@@ -951,8 +1067,11 @@
     margin-bottom: 12px;
     font-size: 14px;
     font-weight: 800;
-    color: #e0faff;
-    text-shadow: 0 0 12px rgba(96, 165, 250, 0.52);
+    color: #ecfeff;
+    letter-spacing: 0;
+    text-shadow:
+      0 0 10px rgba(103, 232, 249, 0.54),
+      0 0 18px rgba(56, 189, 248, 0.24);
   }
 
   .panel-title::before {
@@ -962,8 +1081,8 @@
     left: 0;
     width: 3px;
     content: '';
-    background: #93c5fd;
-    box-shadow: 0 0 12px rgba(96, 165, 250, 0.76);
+    background: linear-gradient(180deg, var(--cyber-cyan), var(--cyber-indigo));
+    box-shadow: 0 0 12px rgba(103, 232, 249, 0.76);
   }
 
   .filter-section {
@@ -976,8 +1095,9 @@
 
   .filter-section :deep(.ant-select-selector) {
     color: #e0faff !important;
-    background: rgba(6, 28, 55, 0.84) !important;
-    border-color: rgba(56, 189, 248, 0.28) !important;
+    background: rgba(2, 8, 23, 0.82) !important;
+    border-color: rgba(103, 232, 249, 0.34) !important;
+    box-shadow: inset 0 0 14px rgba(56, 189, 248, 0.08);
   }
 
   .filter-section :deep(.ant-select-selection-placeholder) {
@@ -999,10 +1119,11 @@
     color: #dff7ff;
     cursor: pointer;
     user-select: none;
-    border-radius: 6px;
+    border-radius: 4px;
     outline: none;
-    background: rgba(2, 8, 23, 0.28);
-    border: 1px solid transparent;
+    background:
+      linear-gradient(90deg, rgba(103, 232, 249, 0.08), transparent 48%), rgba(2, 8, 23, 0.34);
+    border: 1px solid rgba(103, 232, 249, 0.08);
     transition:
       opacity 0.18s ease,
       background 0.18s ease,
@@ -1011,9 +1132,18 @@
 
     &:hover,
     &:focus-visible {
-      background: rgba(96, 165, 250, 0.1);
-      border-color: rgba(147, 197, 253, 0.22);
-      box-shadow: inset 0 0 18px rgba(147, 197, 253, 0.07);
+      background:
+        linear-gradient(
+          90deg,
+          rgba(103, 232, 249, 0.16),
+          rgba(129, 140, 248, 0.08) 58%,
+          transparent
+        ),
+        rgba(2, 8, 23, 0.42);
+      border-color: rgba(103, 232, 249, 0.34);
+      box-shadow:
+        inset 0 0 18px rgba(103, 232, 249, 0.1),
+        0 0 16px rgba(56, 189, 248, 0.1);
     }
 
     i {
@@ -1022,12 +1152,13 @@
       border: 1px solid #fff;
       border-radius: 999px;
       box-shadow:
-        0 0 10px currentColor,
-        0 0 20px currentColor;
+        0 0 8px currentColor,
+        0 0 18px currentColor;
     }
 
     strong {
-      color: #93c5fd;
+      color: var(--cyber-cyan);
+      text-shadow: 0 0 10px rgba(103, 232, 249, 0.42);
     }
   }
 
@@ -1065,13 +1196,15 @@
     padding: 10px 12px;
     overflow: hidden;
     background:
-      linear-gradient(135deg, rgba(147, 197, 253, 0.14), transparent 30%),
-      linear-gradient(180deg, rgba(12, 45, 92, 0.84), rgba(2, 8, 23, 0.8));
-    border: 1px solid rgba(147, 197, 253, 0.28);
-    border-radius: 8px;
+      linear-gradient(135deg, rgba(103, 232, 249, 0.18), transparent 30%),
+      linear-gradient(315deg, rgba(129, 140, 248, 0.12), transparent 36%),
+      linear-gradient(180deg, rgba(7, 26, 62, 0.9), rgba(2, 8, 23, 0.82));
+    border: 1px solid rgba(103, 232, 249, 0.28);
+    border-radius: 6px;
     box-shadow:
-      inset 0 0 22px rgba(147, 197, 253, 0.07),
-      0 18px 40px rgba(0, 0, 0, 0.28);
+      inset 0 0 14px rgba(103, 232, 249, 0.08),
+      0 10px 24px rgba(0, 0, 0, 0.28),
+      0 0 18px rgba(56, 189, 248, 0.08);
 
     &::before {
       position: absolute;
@@ -1080,7 +1213,24 @@
       left: 12px;
       height: 1px;
       content: '';
-      background: linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.78), transparent);
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(103, 232, 249, 0.9),
+        rgba(129, 140, 248, 0.5),
+        transparent
+      );
+    }
+
+    &::after {
+      position: absolute;
+      right: 10px;
+      bottom: 8px;
+      width: 34px;
+      height: 1px;
+      content: '';
+      background: rgba(129, 140, 248, 0.5);
+      box-shadow: 0 0 12px rgba(129, 140, 248, 0.34);
     }
 
     span,
@@ -1093,21 +1243,23 @@
 
     span {
       font-size: 12px;
-      color: #a7dff0;
+      color: #a7f3ff;
     }
 
     strong {
       margin-top: 4px;
       font-size: 20px;
       color: #e0faff;
-      text-shadow: 0 0 14px rgba(96, 165, 250, 0.64);
+      text-shadow:
+        0 0 12px rgba(103, 232, 249, 0.68),
+        0 0 22px rgba(56, 189, 248, 0.28);
     }
   }
 
   .bottom-stat-icon {
     justify-self: center;
-    color: #93c5fd;
-    filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.5));
+    color: var(--cyber-cyan);
+    filter: drop-shadow(0 0 9px rgba(103, 232, 249, 0.54));
   }
 
   .station-detail {
@@ -1118,23 +1270,43 @@
     width: 440px;
     padding: 18px;
     background:
-      linear-gradient(135deg, rgba(147, 197, 253, 0.14), transparent 26%),
-      linear-gradient(180deg, rgba(12, 45, 92, 0.96), rgba(2, 8, 23, 0.94));
-    border: 1px solid rgba(147, 197, 253, 0.38);
-    border-radius: 8px;
+      linear-gradient(135deg, rgba(103, 232, 249, 0.18), transparent 28%),
+      linear-gradient(315deg, rgba(129, 140, 248, 0.12), transparent 34%),
+      linear-gradient(180deg, rgba(7, 26, 62, 0.98), rgba(2, 8, 23, 0.95));
+    border: 1px solid rgba(103, 232, 249, 0.4);
+    border-radius: 6px;
     box-shadow:
-      inset 0 0 34px rgba(147, 197, 253, 0.07),
-      0 22px 72px rgba(0, 0, 0, 0.42),
-      0 0 38px rgba(96, 165, 250, 0.1);
-    backdrop-filter: blur(14px);
+      inset 0 0 20px rgba(103, 232, 249, 0.08),
+      inset 0 -1px 0 rgba(129, 140, 248, 0.18),
+      0 18px 46px rgba(0, 0, 0, 0.38),
+      0 0 26px rgba(56, 189, 248, 0.12);
     transform: translateX(-50%);
+
+    &::before {
+      position: absolute;
+      top: 0;
+      right: 18px;
+      left: 18px;
+      height: 1px;
+      content: '';
+      background: linear-gradient(
+        90deg,
+        transparent,
+        var(--cyber-cyan),
+        var(--cyber-indigo),
+        transparent
+      );
+      box-shadow: 0 0 16px rgba(103, 232, 249, 0.56);
+    }
 
     h2 {
       margin: 8px 0 6px;
       font-size: 22px;
       font-weight: 900;
       color: #f0fbff;
-      text-shadow: 0 0 16px rgba(96, 165, 250, 0.58);
+      text-shadow:
+        0 0 12px rgba(103, 232, 249, 0.66),
+        0 0 24px rgba(129, 140, 248, 0.18);
     }
 
     p {
@@ -1151,7 +1323,7 @@
 
     dt {
       font-size: 12px;
-      color: #8fb9c9;
+      color: #8bd8e8;
     }
 
     dd {
@@ -1167,8 +1339,10 @@
     font-size: 12px;
     font-weight: 800;
     color: #061623;
-    border-radius: 6px;
-    box-shadow: 0 0 16px rgba(96, 165, 250, 0.18);
+    border-radius: 4px;
+    box-shadow:
+      0 0 12px rgba(103, 232, 249, 0.24),
+      0 0 18px rgba(129, 140, 248, 0.12);
   }
 
   .detail-close {
@@ -1181,9 +1355,10 @@
     line-height: 24px;
     color: #dff7ff;
     cursor: pointer;
-    background: rgba(96, 165, 250, 0.12);
-    border: 1px solid rgba(147, 197, 253, 0.26);
+    background: rgba(2, 8, 23, 0.52);
+    border: 1px solid rgba(103, 232, 249, 0.34);
     border-radius: 50%;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.12);
   }
 
   .detail-chart {
@@ -1195,8 +1370,8 @@
     margin-top: 14px;
     padding-top: 12px;
     font-size: 12px;
-    color: #9cd7ea;
-    border-top: 1px solid rgba(148, 216, 232, 0.16);
+    color: #9be8f5;
+    border-top: 1px solid rgba(103, 232, 249, 0.18);
   }
 
   .detail-panel-enter-active,

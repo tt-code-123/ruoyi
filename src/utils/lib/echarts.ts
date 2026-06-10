@@ -9,6 +9,7 @@ import {
   RadarChart,
   ScatterChart,
   GaugeChart,
+  CustomChart,
 } from 'echarts/charts';
 
 import {
@@ -54,6 +55,7 @@ echarts.use([
   GraphicComponent,
   ScatterChart,
   GaugeChart,
+  CustomChart,
 ]);
 
 export default echarts;
