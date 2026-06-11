@@ -18,7 +18,7 @@ import projectSetting from '@/settings/projectSetting';
 import { PermissionModeEnum } from '@/enums/appEnum';
 
 import { asyncRoutes } from '@/router/routes';
-import { ERROR_LOG_ROUTE, PAGE_NOT_FOUND_ROUTE } from '@/router/routes/basic';
+import { ERROR_LOG_ROUTE } from '@/router/routes/basic';
 
 import { filter } from '@/utils/helper/treeHelper';
 
@@ -148,6 +148,10 @@ export const usePermissionStore = defineStore({
         return !ignoreRoute;
       };
 
+      const routeRemoveQinghaiFilter = (route: AppRouteRecordRaw) => {
+        return route.path !== '/qinghai' && route.name !== 'Qinghai';
+      };
+
       /**
        * @description 根据设置的首页path，修正routes中的affix标记（固定首页）
        * */
@@ -266,11 +270,13 @@ export const usePermissionStore = defineStore({
           // 删除 meta.ignoreRoute 项
           routeList = filter(routeList, routeRemoveIgnoreFilter);
           routeList = routeList.filter(routeRemoveIgnoreFilter);
+          routeList = filter(routeList, routeRemoveQinghaiFilter);
+          routeList = routeList.filter(routeRemoveQinghaiFilter);
           // 展开routes
           routeList = flatMultiLevelRoutes(routeList);
           // 重点 展开之后需要再排除一次 去掉ParentView ParentView添加到路由是没有意义的
           routeList = filter(routeList, routeRemoveIgnoreFilter);
-          routes = [PAGE_NOT_FOUND_ROUTE, ...routeList
+          routes = [...routeList
             , ...customRoutes
           ];
           // 检测是否存在重复的路由 给出提示
