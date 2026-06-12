@@ -3,6 +3,7 @@
     <BasicTable @register="registerTable">
       <template #toolbar>
         <a-button @click="handleImport">导入</a-button>
+        <a-button @click="handleExport"> 导出 </a-button>
         <a-button
           type="primary"
           danger
@@ -49,10 +50,15 @@
 </template>
 
 <script setup lang="ts">
+  import { downloadExcel } from '@/utils/file/download';
   import { BasicTable, TableAction, useTable } from '@/components/Table';
   import { useModal } from '@/components/Modal';
   import { IconEnum } from '@/enums/appEnum';
-  import { waterMonthlyPrecipList, waterMonthlyPrecipRemove } from '@/api/water/monthlyPrecip';
+  import {
+    waterMonthlyPrecipList,
+    waterMonthlyPrecipRemove,
+    waterMonthlyPrecipExport,
+  } from '@/api/water/monthlyPrecip';
   import MonthlyPrecipImportModal from './MonthlyPrecipImportModal.vue';
   import MonthlyPrecipModal from './MonthlyPrecipModal.vue';
   import { columns, searchSchemas } from './monthlyPrecip.data';
@@ -62,7 +68,7 @@
 
   const [registerModal, { openModal }] = useModal();
   const [registerImportModal, { openModal: openImportModal }] = useModal();
-  const [registerTable, { reload, multipleRemove, selected }] = useTable({
+  const [registerTable, { reload, multipleRemove, selected, getForm }] = useTable({
     rowSelection: {
       type: 'checkbox',
     },
@@ -94,6 +100,14 @@
       };
     },
   });
+
+  function handleExport() {
+    const formData = getForm().getFieldsValue();
+    downloadExcel(waterMonthlyPrecipExport, '站点数据列表', {
+      ...formData,
+      year: formData.year ? dayjs(formData.year).format('YYYY') : '',
+    });
+  }
 
   function handleAdd() {
     openModal(true, { update: false });

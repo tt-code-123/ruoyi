@@ -1,5 +1,5 @@
 import { defHttp } from '@/utils/http/axios';
-import { ID, IDS } from '@/api/base';
+import { ID, IDS, commonExport } from '@/api/base';
 import type {
   WaterMonthlyPrecipForm,
   WaterMonthlyPrecipQuery,
@@ -10,6 +10,7 @@ enum Api {
   MonthlyPrecip = '/water/monthlyPrecip',
   MonthlyPrecipList = '/water/monthlyPrecip/list',
   MonthlyPrecipImport = '/water/monthlyPrecip/import',
+  MonthlyPrecipExport = '/water/monthlyPrecip/export',
 }
 
 export function waterMonthlyPrecipList(params?: WaterMonthlyPrecipQuery) {
@@ -41,4 +42,8 @@ export function waterMonthlyPrecipImport(file: File | Blob) {
       file,
     },
   );
+}
+
+export function waterMonthlyPrecipExport(params?: WaterMonthlyPrecipQuery) {
+  return commonExport(Api.MonthlyPrecipExport, params ?? {});
 }

@@ -5,8 +5,8 @@
         <span>QINGHAI HYDROLOGY</span>
       </div>
       <div class="screen-shell-title">
-        <p>QINGHAI WATER RESOURCE DIGITAL PLATFORM</p>
-        <h1>青海省水文站网综合展示平台</h1>
+        <p>QINGHAI WATER RESOURCE Analysis and Calculation Software</p>
+        <h1>青海省水资源分析计算软件</h1>
       </div>
       <div class="screen-shell-time">{{ currentTime }}</div>
     </header>
