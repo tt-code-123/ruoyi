@@ -29,7 +29,9 @@ import {
   GraphicComponent,
 } from 'echarts/components';
 
-import { SVGRenderer } from 'echarts/renderers';
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
+import 'echarts-gl/lib/component/geo3D';
+import 'echarts-gl/lib/chart/scatter3D';
 
 echarts.use([
   LegendComponent,
@@ -56,6 +58,7 @@ echarts.use([
   ScatterChart,
   GaugeChart,
   CustomChart,
+  CanvasRenderer,
 ]);
 
 export default echarts;

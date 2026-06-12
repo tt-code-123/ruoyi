@@ -2,6 +2,26 @@
   <div class="water-screen">
     <div class="map-toolbar">
       <a-button size="small" ghost :loading="loading" @click="loadDashboard">刷新</a-button>
+      <button
+        v-for="item in baseMapControls"
+        :key="item.key"
+        type="button"
+        class="map-tool-button"
+        :class="{ 'map-tool-button-off': !item.active }"
+        @click="setBaseMap(item.key)"
+      >
+        {{ item.label }}
+      </button>
+      <button
+        v-for="item in overlayLayerControls"
+        :key="item.key"
+        type="button"
+        class="map-tool-button"
+        :class="{ 'map-tool-button-off': !item.active }"
+        @click="toggleMapLayer(item.key)"
+      >
+        {{ item.label }}
+      </button>
     </div>
     <main class="map-stage">
       <div ref="mapChartRef" class="map-chart"></div>
@@ -98,7 +118,7 @@
 
 <script setup lang="ts">
   import type { Ref } from 'vue';
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+  import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
   import Icon from '@/components/Icon/Icon.vue';
   import { useECharts } from '@/hooks/web/useECharts';
   import {
@@ -117,16 +137,21 @@
     WaterStationMapVO,
   } from '@/api/water/dashboard/model';
   import * as qinghaiGeoJson from './geo/qinghai.json';
+  import {
+    type BaseMapMode,
+    DEFAULT_MAP_LAYER_STATE,
+    getBaseMapOption,
+    type MapLayerState,
+  } from './mapLayerConfig';
 
   defineOptions({ name: 'QinghaiStationMap' });
 
   const QINGHAI_MAP_NAME = 'qinghai-water';
   const QINGHAI_CENTER: [number, number] = [96.04, 35.72];
   const STATION_SERIES_ID = 'station-point-layer';
-  const STATION_CLICK_RADIUS = 14;
   const MAP_AREA_COLOR = '#0b2a5a';
   const MAP_EMPHASIS_COLOR = '#123f85';
-  const MAP_BORDER_COLOR = '#7aa7f7';
+  const QINGHAI_GEO_JSON = (qinghaiGeoJson as any).default || qinghaiGeoJson;
   const STATION_COLORS: Record<string, string> = {
     水文: '#3b82f6',
     气象: '#8eb5ff',
@@ -228,10 +253,11 @@
   const selectedStation = ref<WaterStationMapVO | null>(null);
   const selectedStationDetail = ref<WaterDashboardMap | null>(null);
   const trendRows = ref<WaterDashboardMap[]>([]);
+  const mapLayerState = reactive<MapLayerState>({ ...DEFAULT_MAP_LAYER_STATE });
 
   let isRefreshingDashboard = false;
   let isMapRendered = false;
-  let zrClickHandler: ((event: any) => void) | undefined;
+  let chartClickHandler: ((params: any) => void) | undefined;
 
   const allValidStations = computed(() =>
     stationMapData.value.filter((station) => isValidCoordinate(station)),
@@ -250,6 +276,25 @@
   const selectedStationKey = computed(() =>
     selectedStation.value ? getStationKey(selectedStation.value) : '',
   );
+
+  const baseMapControls = computed(() => [
+    {
+      key: 'vector' as const,
+      label: getBaseMapOption('vector').label,
+      active: mapLayerState.baseMap === 'vector',
+    },
+    {
+      key: 'imagery' as const,
+      label: getBaseMapOption('imagery').label,
+      active: mapLayerState.baseMap === 'imagery',
+    },
+  ]);
+
+  const overlayLayerControls = computed(() => [
+    { key: 'showBoundary' as const, label: '边界', active: mapLayerState.showBoundary },
+    { key: 'showLabels' as const, label: '标签', active: mapLayerState.showLabels },
+    { key: 'showStations' as const, label: '站点', active: mapLayerState.showStations },
+  ]);
 
   const stationLegend = computed(() => {
     const types = Array.from(
@@ -294,24 +339,16 @@
     },
   ]);
 
-  const detailSummary = computed(() => {
-    if (!selectedStationDetail.value) {
-      return '暂无更多详情数据';
-    }
-    const keys = Object.keys(selectedStationDetail.value);
-    return keys.length ? `已加载详情字段：${keys.slice(0, 6).join('、')}` : '暂无更多详情数据';
-  });
-
   onMounted(async () => {
-    echarts.registerMap(QINGHAI_MAP_NAME, qinghaiGeoJson as any);
+    echarts.registerMap(QINGHAI_MAP_NAME, QINGHAI_GEO_JSON as any);
     bindMapClick();
     await loadDashboard();
   });
 
   onBeforeUnmount(() => {
-    const zr = getMapInstance()?.getZr();
-    if (zr && zrClickHandler) {
-      zr.off('click', zrClickHandler);
+    const instance = getMapInstance();
+    if (instance && chartClickHandler) {
+      instance.off('click', chartClickHandler);
     }
   });
 
@@ -328,6 +365,10 @@
       return;
     }
     updateStationSeries();
+  });
+
+  watch(mapLayerState, () => {
+    renderMapChart();
   });
 
   async function loadDashboard() {
@@ -366,70 +407,125 @@
   function bindMapClick() {
     nextTick(() => {
       const instance = getMapInstance();
-      const zr = instance?.getZr();
-      if (!zr) {
+      if (!instance) {
         return;
       }
-      if (zrClickHandler) {
-        zr.off('click', zrClickHandler);
+      if (chartClickHandler) {
+        instance.off('click', chartClickHandler);
       }
-      zrClickHandler = (event: any) => {
-        const station = findNearestStation(event.offsetX, event.offsetY);
-        if (station) {
-          selectStation(station);
+      chartClickHandler = (params: any) => {
+        if (params?.seriesId === STATION_SERIES_ID && params?.data?.station) {
+          selectStation(params.data.station);
         }
       };
-      zr.on('click', zrClickHandler);
+      instance.on('click', chartClickHandler);
     });
   }
 
   function renderMapChart() {
     setMapOptions({
       tooltip: { show: false },
-      geo: createMapGeoOption(),
-      series: [
-        {
-          id: STATION_SERIES_ID,
-          type: 'custom' as any,
-          coordinateSystem: 'geo',
-          z: 3,
-          silent: true,
-          animation: false,
-          progressive: 400,
-          progressiveThreshold: 800,
-          renderItem: renderStationPoint,
-          data: displayStations.value.map(toStationPointData),
-        },
-      ],
-    });
+      geo3D: createMapGeo3DOption(),
+      series: createMapSeriesOptions(),
+    } as any);
     isMapRendered = true;
     bindMapClick();
   }
 
-  function createMapGeoOption() {
+  function createMapGeo3DOption() {
+    const baseMapOption = getBaseMapOption(mapLayerState.baseMap);
     return {
       map: QINGHAI_MAP_NAME,
       roam: true,
-      zoom: 1.18,
+      regionHeight: 5.8,
       center: QINGHAI_CENTER,
-      scaleLimit: { min: 0.9, max: 6 },
+      boxHeight: 12,
+      boxDepth: 84,
+      boxWidth: 108,
+      environment: 'rgba(0,0,0,0)',
+      shading: baseMapOption.shading,
       itemStyle: {
-        areaColor: MAP_AREA_COLOR,
-        borderColor: MAP_BORDER_COLOR,
-        borderWidth: 1.5,
-        shadowBlur: 22,
-        shadowColor: 'rgba(35, 128, 205, 0.34)',
+        color: baseMapOption.topColor || MAP_AREA_COLOR,
+        opacity: 0.96,
+        borderColor: mapLayerState.showBoundary
+          ? baseMapOption.borderColor
+          : 'rgba(122, 167, 247, 0.08)',
+        borderWidth: mapLayerState.showBoundary ? 1.2 : 0.25,
       },
       emphasis: {
-        itemStyle: { areaColor: MAP_EMPHASIS_COLOR },
+        itemStyle: { color: MAP_EMPHASIS_COLOR },
         label: { color: '#fff' },
       },
       label: {
-        show: true,
+        show: mapLayerState.showLabels,
         color: '#e7edf8',
         fontWeight: 700,
       },
+      realisticMaterial: {
+        roughness: mapLayerState.baseMap === 'imagery' ? 0.82 : 0.56,
+        metalness: 0,
+      },
+      light: {
+        main: {
+          intensity: mapLayerState.baseMap === 'imagery' ? 1.2 : 1.05,
+          shadow: true,
+          alpha: 38,
+          beta: 18,
+        },
+        ambient: {
+          intensity: mapLayerState.baseMap === 'imagery' ? 0.36 : 0.46,
+        },
+      },
+      postEffect: {
+        enable: true,
+        bloom: {
+          enable: true,
+          bloomIntensity: mapLayerState.baseMap === 'imagery' ? 0.16 : 0.24,
+        },
+        SSAO: {
+          enable: true,
+          radius: 2,
+          intensity: 1.12,
+        },
+      },
+      viewControl: {
+        projection: 'perspective',
+        distance: 118,
+        alpha: 52,
+        beta: 0,
+        center: [0, 0, 0],
+        rotateSensitivity: 1,
+        zoomSensitivity: 1,
+        panSensitivity: 0.8,
+      },
     };
+  }
+
+  function createMapSeriesOptions() {
+    return [
+      {
+        id: STATION_SERIES_ID,
+        type: 'scatter3D',
+        coordinateSystem: 'geo3D',
+        symbol: 'circle',
+        symbolSize: 10,
+        silent: false,
+        animation: true,
+        blendMode: 'source-over',
+        label: {
+          show: false,
+        },
+        emphasis: {
+          label: {
+            show: true,
+            formatter: '{b}',
+            color: '#fff',
+            distance: 8,
+          },
+        },
+        data: mapLayerState.showStations ? displayStations.value.map(toStationPointData) : [],
+      },
+    ];
   }
 
   function renderBasinRatioChart() {
@@ -571,6 +667,16 @@
       : hiddenStationTypes.value.filter((item) => item !== type);
   }
 
+  function setBaseMap(baseMap: BaseMapMode) {
+    mapLayerState.baseMap = baseMap;
+  }
+
+  function toggleMapLayer(
+    key: keyof Pick<MapLayerState, 'showBoundary' | 'showLabels' | 'showStations'>,
+  ) {
+    mapLayerState[key] = !mapLayerState[key];
+  }
+
   function isStationTypeVisible(type: string) {
     return !hiddenStationTypes.value.includes(type);
   }
@@ -588,7 +694,7 @@
       series: [
         {
           id: STATION_SERIES_ID,
-          data: displayStations.value.map(toStationPointData),
+          data: mapLayerState.showStations ? displayStations.value.map(toStationPointData) : [],
         },
       ],
     });
@@ -601,73 +707,20 @@
   function toStationPointData(station: WaterStationMapVO) {
     const color = getStationColor(station.stationType);
     const stationKey = getStationKey(station);
+    const isSelected = stationKey === selectedStationKey.value;
     return {
       name: station.stationName,
-      value: [
-        Number(station.longitude),
-        Number(station.latitude),
-        color,
-        stationKey === selectedStationKey.value ? 1 : 0,
-      ],
+      value: [Number(station.longitude), Number(station.latitude), isSelected ? 3.8 : 2.4],
+      station,
       stationKey,
+      symbolSize: isSelected ? 16 : 10,
       itemStyle: {
         color,
+        opacity: 0.95,
         borderColor: '#fff',
-        borderWidth: 1.5,
-        shadowBlur: 6,
-        shadowColor: color,
+        borderWidth: isSelected ? 2 : 1,
       },
     };
-  }
-
-  function renderStationPoint(params: any, api: any) {
-    const point = api.coord([api.value(0), api.value(1)]);
-    if (!point) {
-      return null;
-    }
-    const color = api.value(2) || '#7aa7f7';
-    const isSelected = api.value(3) === 1;
-    return {
-      type: 'circle' as const,
-      shape: {
-        cx: point[0],
-        cy: point[1],
-        r: isSelected ? 7 : 4.5,
-      },
-      style: {
-        fill: color,
-        stroke: '#fff',
-        lineWidth: isSelected ? 2 : 1,
-        shadowBlur: isSelected ? 8 : 0,
-        shadowColor: color,
-      },
-      silent: true,
-    };
-  }
-
-  function findNearestStation(offsetX: number, offsetY: number) {
-    const instance = getMapInstance();
-    if (!instance) {
-      return undefined;
-    }
-
-    let nearestStation: WaterStationMapVO | undefined;
-    let nearestDistance = STATION_CLICK_RADIUS * STATION_CLICK_RADIUS;
-    displayStations.value.forEach((station) => {
-      const point = instance.convertToPixel({ geoIndex: 0 }, [
-        Number(station.longitude),
-        Number(station.latitude),
-      ]) as number[] | undefined;
-      if (!point) {
-        return;
-      }
-      const distance = (point[0] - offsetX) ** 2 + (point[1] - offsetY) ** 2;
-      if (distance <= nearestDistance) {
-        nearestDistance = distance;
-        nearestStation = station;
-      }
-    });
-    return nearestStation;
   }
 
   function countStationsByType(stations: WaterStationMapVO[]) {
@@ -840,15 +893,49 @@
     top: 10px;
     right: 18px;
     z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    max-width: min(560px, calc(100% - 36px));
   }
 
-  .map-toolbar :deep(.ant-btn) {
+  .map-toolbar :deep(.ant-btn),
+  .map-tool-button {
+    height: 24px;
+    padding: 0 10px;
+    font-size: 12px;
+    line-height: 22px;
     color: #eff6ff;
+    cursor: pointer;
     background: linear-gradient(135deg, rgba(29, 78, 216, 0.18), rgba(37, 99, 235, 0.08));
     border-color: rgba(59, 130, 246, 0.46);
+    border-style: solid;
+    border-width: 1px;
+    border-radius: 4px;
     box-shadow:
       inset 0 0 16px rgba(59, 130, 246, 0.1),
       0 0 18px rgba(59, 130, 246, 0.18);
+    transition:
+      opacity 0.18s ease,
+      border-color 0.18s ease,
+      box-shadow 0.18s ease;
+  }
+
+  .map-tool-button:hover,
+  .map-tool-button:focus-visible {
+    border-color: rgba(147, 197, 253, 0.78);
+    outline: none;
+    box-shadow:
+      inset 0 0 16px rgba(59, 130, 246, 0.14),
+      0 0 20px rgba(59, 130, 246, 0.28);
+  }
+
+  .map-tool-button-off {
+    color: rgba(203, 213, 225, 0.68);
+    background: rgba(2, 8, 23, 0.56);
+    border-color: rgba(59, 130, 246, 0.18);
+    box-shadow: inset 0 0 10px rgba(15, 23, 42, 0.28);
   }
 
   .map-stage {
@@ -1036,12 +1123,7 @@
     &:hover,
     &:focus-visible {
       background:
-        linear-gradient(
-          90deg,
-          rgba(59, 130, 246, 0.16),
-          rgba(37, 99, 235, 0.08) 58%,
-          transparent
-        ),
+        linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(37, 99, 235, 0.08) 58%, transparent),
         rgba(2, 8, 23, 0.42);
       border-color: rgba(59, 130, 246, 0.34);
       box-shadow:
