@@ -51,19 +51,16 @@ export const columns: BasicColumn[] = [
     title: '站名',
     dataIndex: 'stationName',
     width: 140,
-    fixed: 'left',
   },
   {
     title: '编码',
     dataIndex: 'stationCode',
     width: 120,
-    fixed: 'left',
   },
   {
     title: '年份',
     dataIndex: 'year',
     width: 90,
-    fixed: 'left',
   },
   ...monthColumns,
   {

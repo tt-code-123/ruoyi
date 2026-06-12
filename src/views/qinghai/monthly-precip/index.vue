@@ -77,6 +77,9 @@
     rowKey: 'id',
     showIndexColumn: true,
     useSearchForm: true,
+    pagination: {
+      pageSize: 20,
+    },
     formConfig: {
       schemas: searchSchemas,
       baseColProps: {
@@ -132,7 +135,17 @@
     height: 100%;
     padding: 0;
     overflow: hidden;
-    color: #e6fbff;
+    color: #eff6ff;
+    background:
+      linear-gradient(rgba(59, 130, 246, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.035) 1px, transparent 1px),
+      radial-gradient(circle at 22% 0, rgba(37, 99, 235, 0.18), transparent 28%),
+      linear-gradient(180deg, #08111f, #020617);
+    background-size:
+      28px 28px,
+      28px 28px,
+      100% 100%,
+      100% 100%;
   }
 
   .station-data-screen :deep(.vben-basic-table) {
@@ -140,12 +153,13 @@
     padding: 14px;
     overflow: hidden;
     background:
-      linear-gradient(135deg, rgba(103, 232, 249, 0.14), transparent 26%),
-      linear-gradient(315deg, rgba(129, 140, 248, 0.1), transparent 30%), rgba(4, 18, 42, 0.82);
-    border: 1px solid rgba(103, 232, 249, 0.24);
+      linear-gradient(135deg, rgba(59, 130, 246, 0.14), transparent 26%),
+      linear-gradient(315deg, rgba(37, 99, 235, 0.1), transparent 30%),
+      linear-gradient(180deg, rgba(23, 37, 70, 0.9), rgba(13, 24, 48, 0.92));
+    border: 1px solid rgba(59, 130, 246, 0.24);
     border-radius: 6px;
     box-shadow:
-      inset 0 0 20px rgba(103, 232, 249, 0.08),
+      inset 0 0 20px rgba(59, 130, 246, 0.08),
       0 12px 32px rgba(0, 0, 0, 0.28);
   }
 
@@ -158,8 +172,8 @@
     padding: 14px 14px 4px;
     margin-bottom: 8px;
     background:
-      linear-gradient(90deg, rgba(103, 232, 249, 0.08), transparent 52%), rgba(2, 8, 23, 0.2);
-    border: 1px solid rgba(103, 232, 249, 0.12);
+      linear-gradient(90deg, rgba(59, 130, 246, 0.1), transparent 52%), rgba(15, 30, 61, 0.58);
+    border: 1px solid rgba(79, 121, 214, 0.22);
     border-radius: 4px;
   }
 
@@ -168,7 +182,7 @@
   .station-data-screen :deep(.ant-table),
   .station-data-screen :deep(.ant-table-container),
   .station-data-screen :deep(.ant-table-content) {
-    color: #dff7ff;
+    color: #f3f7ff;
     background: transparent;
   }
 
@@ -176,37 +190,37 @@
   .station-data-screen :deep(.vben-basic-table-header__title),
   .station-data-screen :deep(.vben-basic-title),
   .station-data-screen :deep(.vben-basic-table-title) {
-    color: #f0fbff;
+    color: #f8fbff;
     font-weight: 800;
     text-shadow:
-      0 0 12px rgba(103, 232, 249, 0.58),
-      0 0 22px rgba(56, 189, 248, 0.22);
+      0 0 12px rgba(59, 130, 246, 0.58),
+      0 0 22px rgba(59, 130, 246, 0.22);
   }
 
   .station-data-screen :deep(.ant-table-thead > tr > th) {
-    color: #c7f7ff;
-    background: rgba(10, 38, 76, 0.92);
-    border-bottom: 1px solid rgba(103, 232, 249, 0.22);
+    color: #d8e2f3;
+    background: rgba(24, 55, 106, 0.94);
+    border-bottom: 1px solid rgba(79, 121, 214, 0.34);
   }
 
   .station-data-screen :deep(.ant-table-thead > tr > th.ant-table-cell-fix-left),
   .station-data-screen :deep(.ant-table-tbody > tr > td.ant-table-cell-fix-left),
   .station-data-screen :deep(.ant-table-thead > tr > th.ant-table-cell-fix-right),
   .station-data-screen :deep(.ant-table-tbody > tr > td.ant-table-cell-fix-right) {
-    background: linear-gradient(90deg, rgba(4, 18, 42, 0.98), rgba(10, 38, 76, 0.98)), #06162e;
+    background: linear-gradient(90deg, rgba(18, 38, 76, 0.98), rgba(24, 55, 106, 0.98)), #12264c;
     box-shadow:
       -10px 0 18px rgba(2, 8, 23, 0.46),
-      inset 1px 0 0 rgba(103, 232, 249, 0.18);
+      inset 1px 0 0 rgba(59, 130, 246, 0.18);
   }
 
   .station-data-screen :deep(.ant-table-tbody > tr > td) {
-    color: #dff7ff;
-    background: rgba(3, 14, 34, 0.54);
-    border-bottom: 1px solid rgba(103, 232, 249, 0.12);
+    color: #f3f7ff;
+    background: rgba(15, 30, 61, 0.72);
+    border-bottom: 1px solid rgba(79, 121, 214, 0.18);
   }
 
   .station-data-screen :deep(.ant-table-tbody > tr:hover > td) {
-    background: rgba(14, 165, 233, 0.16);
+    background: rgba(37, 99, 235, 0.24);
   }
 
   .station-data-screen :deep(.ant-input),
@@ -214,18 +228,18 @@
   .station-data-screen :deep(.ant-input-number),
   .station-data-screen :deep(.ant-picker),
   .station-data-screen :deep(.ant-select-selector) {
-    color: #e6fbff;
-    background: rgba(2, 8, 23, 0.68) !important;
-    border-color: rgba(103, 232, 249, 0.28) !important;
+    color: #eff6ff;
+    background: rgba(15, 30, 61, 0.78) !important;
+    border-color: rgba(79, 121, 214, 0.36) !important;
     box-shadow:
-      inset 0 0 14px rgba(103, 232, 249, 0.08),
-      0 0 12px rgba(56, 189, 248, 0.08);
+      inset 0 0 14px rgba(59, 130, 246, 0.08),
+      0 0 12px rgba(59, 130, 246, 0.08);
   }
 
   .station-data-screen :deep(.ant-input::placeholder),
   .station-data-screen :deep(.ant-select-selection-placeholder),
   .station-data-screen :deep(.ant-picker-input > input::placeholder) {
-    color: rgba(211, 241, 250, 0.56);
+    color: rgba(203, 213, 225, 0.56);
   }
 
   .station-data-screen :deep(.ant-form-item-label > label),
@@ -237,28 +251,28 @@
   .station-data-screen :deep(.ant-picker-suffix),
   .station-data-screen :deep(.ant-input-prefix),
   .station-data-screen :deep(.ant-input-suffix) {
-    color: #c7f7ff;
+    color: #d8e2f3;
   }
 
   .station-data-screen :deep(.ant-btn-default) {
-    color: #e6fbff;
+    color: #eff6ff;
     background:
-      linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(129, 140, 248, 0.06)),
+      linear-gradient(135deg, rgba(29, 78, 216, 0.12), rgba(37, 99, 235, 0.06)),
       rgba(2, 8, 23, 0.5);
-    border-color: rgba(103, 232, 249, 0.32);
-    box-shadow: inset 0 0 12px rgba(103, 232, 249, 0.06);
+    border-color: rgba(59, 130, 246, 0.32);
+    box-shadow: inset 0 0 12px rgba(59, 130, 246, 0.06);
   }
 
   .station-data-screen :deep(.ant-btn-primary) {
-    background: linear-gradient(135deg, #0ea5e9, #2563eb);
-    border-color: rgba(103, 232, 249, 0.52);
-    box-shadow: 0 0 18px rgba(56, 189, 248, 0.22);
+    background: linear-gradient(135deg, #1d4ed8, #2563eb);
+    border-color: rgba(59, 130, 246, 0.52);
+    box-shadow: 0 0 18px rgba(59, 130, 246, 0.22);
   }
 
   .station-data-screen :deep(.ant-btn-primary.ant-btn-background-ghost) {
-    color: #67e8f9;
-    background: rgba(14, 165, 233, 0.1);
-    border-color: rgba(103, 232, 249, 0.44);
+    color: #7aa7f7;
+    background: rgba(29, 78, 216, 0.1);
+    border-color: rgba(59, 130, 246, 0.44);
   }
 
   .station-data-screen :deep(.ant-btn-primary.ant-btn-dangerous.ant-btn-background-ghost) {

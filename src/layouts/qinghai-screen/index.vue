@@ -93,12 +93,12 @@
 <style scoped lang="less">
   .qinghai-screen-layout {
     --screen-bg: #030914;
-    --screen-panel: rgba(8, 28, 56, 0.78);
-    --screen-line: rgba(103, 232, 249, 0.34);
-    --screen-cyan: #67e8f9;
-    --screen-blue: #38bdf8;
-    --screen-violet: #8b5cf6;
-    --screen-text: #e6fbff;
+    --screen-panel: rgba(15, 31, 64, 0.78);
+    --screen-line: rgba(59, 130, 246, 0.34);
+    --screen-accent: #7aa7f7;
+    --screen-blue: #3b82f6;
+    --screen-violet: #1e40af;
+    --screen-text: #eff6ff;
     position: relative;
     width: 100vw;
     height: 100vh;
@@ -107,12 +107,12 @@
     overflow: hidden;
     color: var(--screen-text);
     background:
-      linear-gradient(rgba(103, 232, 249, 0.045) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(103, 232, 249, 0.045) 1px, transparent 1px),
-      radial-gradient(circle at 50% 36%, rgba(14, 165, 233, 0.2), transparent 34%),
-      radial-gradient(circle at 14% 18%, rgba(129, 140, 248, 0.16), transparent 26%),
-      radial-gradient(circle at 86% 76%, rgba(139, 92, 246, 0.14), transparent 28%),
-      linear-gradient(180deg, #030914 0%, #061e3c 48%, #020612 100%);
+      linear-gradient(rgba(59, 130, 246, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(59, 130, 246, 0.04) 1px, transparent 1px),
+      radial-gradient(circle at 50% 36%, rgba(29, 78, 216, 0.18), transparent 34%),
+      radial-gradient(circle at 14% 18%, rgba(37, 99, 235, 0.13), transparent 26%),
+      radial-gradient(circle at 86% 76%, rgba(30, 64, 175, 0.12), transparent 28%),
+      linear-gradient(180deg, #07111f 0%, #0a1f42 48%, #020617 100%);
     background-size:
       32px 32px,
       32px 32px,
@@ -133,20 +133,20 @@
 
   .qinghai-screen-layout::before {
     background:
-      linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.2), transparent),
+      linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.18), transparent),
       linear-gradient(
         180deg,
-        rgba(129, 140, 248, 0.1),
+        rgba(37, 99, 235, 0.1),
         transparent 24%,
         transparent 72%,
-        rgba(56, 189, 248, 0.12)
+        rgba(59, 130, 246, 0.1)
       );
     mask-image: linear-gradient(180deg, transparent 0, #000 12%, #000 88%, transparent 100%);
   }
 
   .qinghai-screen-layout::after {
-    border: 1px solid rgba(103, 232, 249, 0.12);
-    box-shadow: inset 0 0 80px rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.12);
+    box-shadow: inset 0 0 80px rgba(37, 99, 235, 0.08);
   }
 
   .screen-shell-header {
@@ -162,27 +162,27 @@
       linear-gradient(
         90deg,
         transparent,
-        rgba(56, 189, 248, 0.2),
-        rgba(129, 140, 248, 0.1),
+        rgba(59, 130, 246, 0.18),
+        rgba(37, 99, 235, 0.1),
         transparent
       );
-    border-bottom: 1px solid rgba(103, 232, 249, 0.2);
+    border-bottom: 1px solid rgba(59, 130, 246, 0.2);
   }
 
   .screen-shell-mark,
   .screen-shell-time {
     font-size: 13px;
     font-weight: 800;
-    color: #c7f7ff;
+    color: #d8e2f3;
   }
 
   .screen-shell-mark span {
     display: inline-flex;
     padding: 7px 12px;
     background: rgba(2, 8, 23, 0.42);
-    border: 1px solid rgba(103, 232, 249, 0.3);
+    border: 1px solid rgba(59, 130, 246, 0.3);
     border-radius: 4px;
-    box-shadow: inset 0 0 14px rgba(103, 232, 249, 0.08);
+    box-shadow: inset 0 0 14px rgba(59, 130, 246, 0.08);
   }
 
   .screen-shell-time {
@@ -196,9 +196,9 @@
       margin: 0;
       font-size: 12px;
       font-weight: 800;
-      color: var(--screen-cyan);
+      color: #c8d6f2;
       letter-spacing: 0;
-      text-shadow: 0 0 12px rgba(103, 232, 249, 0.72);
+      text-shadow: 0 0 10px rgba(59, 130, 246, 0.42);
     }
 
     h1 {
@@ -206,11 +206,10 @@
       font-size: 34px;
       font-weight: 900;
       line-height: 1.2;
-      color: #f0fbff;
+      color: #f8fbff;
       text-shadow:
-        0 0 10px rgba(103, 232, 249, 0.9),
-        0 0 24px rgba(56, 189, 248, 0.42),
-        0 0 38px rgba(129, 140, 248, 0.22);
+        0 0 10px rgba(59, 130, 246, 0.58),
+        0 0 24px rgba(37, 99, 235, 0.28);
     }
   }
 
@@ -232,16 +231,16 @@
     min-width: 136px;
     height: 34px;
     padding: 0 18px;
-    color: #c7f7ff;
+    color: #d8e2f3;
     cursor: pointer;
     background:
-      linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(129, 140, 248, 0.08)),
+      linear-gradient(135deg, rgba(29, 78, 216, 0.16), rgba(37, 99, 235, 0.08)),
       rgba(2, 8, 23, 0.48);
-    border: 1px solid rgba(103, 232, 249, 0.34);
+    border: 1px solid rgba(59, 130, 246, 0.34);
     border-radius: 4px;
     box-shadow:
-      inset 0 0 16px rgba(103, 232, 249, 0.08),
-      0 0 18px rgba(56, 189, 248, 0.12);
+      inset 0 0 16px rgba(59, 130, 246, 0.08),
+      0 0 18px rgba(59, 130, 246, 0.12);
     transition:
       color 0.18s ease,
       border-color 0.18s ease,
@@ -252,12 +251,12 @@
     &.is-active {
       color: #ffffff;
       background:
-        linear-gradient(135deg, rgba(14, 165, 233, 0.34), rgba(129, 140, 248, 0.16)),
+        linear-gradient(135deg, rgba(29, 78, 216, 0.34), rgba(37, 99, 235, 0.16)),
         rgba(2, 8, 23, 0.6);
-      border-color: rgba(103, 232, 249, 0.78);
+      border-color: rgba(59, 130, 246, 0.78);
       box-shadow:
-        inset 0 0 18px rgba(103, 232, 249, 0.12),
-        0 0 24px rgba(56, 189, 248, 0.24);
+        inset 0 0 18px rgba(59, 130, 246, 0.12),
+        0 0 24px rgba(37, 99, 235, 0.24);
     }
   }
 
