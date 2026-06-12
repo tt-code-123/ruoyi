@@ -17,7 +17,7 @@
       <template #toolbar>
         <a-button @click="handleImport">导入</a-button>
         <a-button
-          @click="downloadExcel(waterStationExport, '站点信息列表', getForm().getFieldsValue())"
+          @click="downloadExcel(waterStationExport, '站点基础信息列表', getForm().getFieldsValue())"
         >
           导出
         </a-button>
@@ -90,7 +90,7 @@
     rowSelection: {
       type: 'checkbox',
     },
-    title: '站点信息列表',
+    title: '站点基础信息列表',
     api: waterStationList,
     rowKey: 'stationId',
     showIndexColumn: true,

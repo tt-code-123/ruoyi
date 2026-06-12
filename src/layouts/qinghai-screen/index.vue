@@ -48,9 +48,14 @@
       icon: 'gis:map-poi',
     },
     {
-      title: '基础数据',
+      title: '站点基础信息',
       path: '/qinghai/station-data',
       icon: 'material-symbols:database-outline',
+    },
+    {
+      title: '站点数据',
+      path: '/qinghai/monthly-precip',
+      icon: 'material-symbols:rainy-outline',
     },
   ];
 

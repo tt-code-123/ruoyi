@@ -30,7 +30,17 @@ const qinghai: AppRouteModule = {
       name: 'QinghaiStationData',
       component: () => import('@/views/qinghai/station-data/index.vue'),
       meta: {
-        title: '基础数据',
+        title: '站点基础信息',
+        ignoreAuth: true,
+        hideMenu: true,
+      },
+    },
+    {
+      path: 'monthly-precip',
+      name: 'QinghaiMonthlyPrecip',
+      component: () => import('@/views/qinghai/monthly-precip/index.vue'),
+      meta: {
+        title: '站点数据',
         ignoreAuth: true,
         hideMenu: true,
       },
