@@ -41,4 +41,9 @@ export const surfaceWaterColumns: BasicColumn[] = [
     dataIndex: 'totalArea',
     width: 110,
   },
+  {
+    title: '代表站（计算公式）',
+    dataIndex: 'formula',
+    width: 150,
+  },
 ];
