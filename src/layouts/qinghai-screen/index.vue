@@ -17,7 +17,7 @@
         :key="item.path"
         type="button"
         class="screen-shell-nav-item"
-        :class="{ 'is-active': route.path === item.path }"
+        :class="{ 'is-active': isActive(item.path) }"
         @click="go(item.path)"
       >
         <Icon :icon="item.icon" :size="18" />
@@ -57,6 +57,11 @@
       path: '/qinghai/monthly-precip',
       icon: 'material-symbols:rainy-outline',
     },
+    {
+      title: '计算公式',
+      path: '/qinghai/calc-formula',
+      icon: 'material-symbols:functions',
+    },
   ];
 
   let timer: number | undefined;
@@ -76,6 +81,10 @@
     if (route.path !== path) {
       router.push(path);
     }
+  }
+
+  function isActive(path: string) {
+    return route.path === path || route.path.startsWith(`${path}/`);
   }
 
   function refreshTime() {

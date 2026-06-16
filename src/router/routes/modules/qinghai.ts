@@ -45,6 +45,36 @@ const qinghai: AppRouteModule = {
         hideMenu: true,
       },
     },
+    {
+      path: 'calc-formula',
+      name: 'QinghaiCalcFormula',
+      component: () => import('@/views/qinghai/calc-formula/index.vue'),
+      meta: {
+        title: '计算公式管理',
+        ignoreAuth: true,
+        hideMenu: true,
+      },
+    },
+    {
+      path: 'calc-formula/precipitation',
+      name: 'QinghaiPrecipitationCalcFormula',
+      component: () => import('@/views/qinghai/calc-formula/precipitation.vue'),
+      meta: {
+        title: '降水计算公式',
+        ignoreAuth: true,
+        hideMenu: true,
+      },
+    },
+    {
+      path: 'calc-formula/surface-water',
+      name: 'QinghaiSurfaceWaterCalcFormula',
+      component: () => import('@/views/qinghai/calc-formula/surface-water.vue'),
+      meta: {
+        title: '地表水计算公式',
+        ignoreAuth: true,
+        hideMenu: true,
+      },
+    },
   ],
 };
 
