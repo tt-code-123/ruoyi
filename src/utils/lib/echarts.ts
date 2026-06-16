@@ -31,7 +31,6 @@ import {
 
 import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import 'echarts-gl/lib/component/geo3D';
-import 'echarts-gl/lib/chart/scatter3D';
 
 echarts.use([
   LegendComponent,

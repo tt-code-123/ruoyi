@@ -23,8 +23,23 @@
         {{ item.label }}
       </button>
     </div>
-    <main class="map-stage">
+    <main ref="mapStageRef" class="map-stage" @wheel.passive="handleMapWheel">
       <div ref="mapChartRef" class="map-chart"></div>
+      <div v-if="mapLayerState.showStations" class="station-marker-layer">
+        <button
+          v-for="marker in stationMarkers"
+          :key="marker.stationKey"
+          :ref="(element) => setStationMarkerElement(marker.stationKey, element)"
+          type="button"
+          class="station-marker"
+          :class="{ 'station-marker-selected': marker.isSelected }"
+          :style="{
+            '--station-color': marker.color,
+          }"
+          :title="marker.station.stationName"
+          @click.stop="selectStation(marker.station)"
+        ></button>
+      </div>
     </main>
 
     <aside class="screen-panel left-panel">
@@ -117,8 +132,19 @@
 </template>
 
 <script setup lang="ts">
-  import type { Ref } from 'vue';
-  import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+  import type { EChartsOption } from 'echarts';
+  import type { ComponentPublicInstance, Ref } from 'vue';
+  import {
+    computed,
+    markRaw,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    reactive,
+    ref,
+    shallowRef,
+    watch,
+  } from 'vue';
   import Icon from '@/components/Icon/Icon.vue';
   import { useECharts } from '@/hooks/web/useECharts';
   import {
@@ -136,9 +162,10 @@
     WaterDivisionMapVO,
     WaterStationMapVO,
   } from '@/api/water/dashboard/model';
-  import * as qinghaiGeoJson from './geo/qinghai.json';
+  import qinghaiGeoJson from './geo/qinghai.json';
   import {
     type BaseMapMode,
+    buildMapTexture,
     DEFAULT_MAP_LAYER_STATE,
     getBaseMapOption,
     type MapLayerState,
@@ -148,15 +175,15 @@
 
   const QINGHAI_MAP_NAME = 'qinghai-water';
   const QINGHAI_CENTER: [number, number] = [96.04, 35.72];
-  const STATION_SERIES_ID = 'station-point-layer';
+  type RegisteredMapSource = Parameters<typeof echarts.registerMap>[1];
   const MAP_AREA_COLOR = '#0b2a5a';
   const MAP_EMPHASIS_COLOR = '#123f85';
-  const QINGHAI_GEO_JSON = (qinghaiGeoJson as any).default || qinghaiGeoJson;
+  const QINGHAI_GEO_JSON = qinghaiGeoJson as unknown as RegisteredMapSource;
   const STATION_COLORS: Record<string, string> = {
-    水文: '#3b82f6',
-    气象: '#8eb5ff',
-    雨量: '#2563eb',
-    中小河流: '#1d4ed8',
+    水文: '#2563eb',
+    气象: '#f59e0b',
+    雨量: '#06b6d4',
+    中小河流: '#a855f7',
   };
 
   const FALLBACK_STATIONS: WaterStationMapVO[] = [
@@ -220,6 +247,7 @@
     },
   ];
 
+  const mapStageRef = ref<HTMLDivElement | null>(null);
   const mapChartRef = ref<HTMLDivElement | null>(null);
   const basinRatioChartRef = ref<HTMLDivElement | null>(null);
   const divisionChartRef = ref<HTMLDivElement | null>(null);
@@ -254,10 +282,42 @@
   const selectedStationDetail = ref<WaterDashboardMap | null>(null);
   const trendRows = ref<WaterDashboardMap[]>([]);
   const mapLayerState = reactive<MapLayerState>({ ...DEFAULT_MAP_LAYER_STATE });
+  const mapTexture = shallowRef<HTMLCanvasElement | null>(null);
+  const stationMarkers = computed<StationMarkerView[]>(() =>
+    displayStations.value.map((station) => {
+      const stationKey = getStationKey(station);
+      return {
+        station,
+        stationKey,
+        color: getStationColor(station.stationType),
+        isSelected: stationKey === selectedStationKey.value,
+      };
+    }),
+  );
 
   let isRefreshingDashboard = false;
   let isMapRendered = false;
-  let chartClickHandler: ((params: any) => void) | undefined;
+  let chartRenderedHandler: (() => void) | undefined;
+  let markerUpdateFrame = 0;
+  let continuousMarkerUpdateFrame = 0;
+  let continuousMarkerUpdateUntil = 0;
+  let qinghaiGeoBounds: GeoBounds | undefined;
+  let mapTextureRequestId = 0;
+  const stationMarkerElements = new Map<string, HTMLElement>();
+
+  interface StationMarkerView {
+    station: WaterStationMapVO;
+    stationKey: string;
+    color: string;
+    isSelected: boolean;
+  }
+
+  interface GeoBounds {
+    minLng: number;
+    maxLng: number;
+    minLat: number;
+    maxLat: number;
+  }
 
   const allValidStations = computed(() =>
     stationMapData.value.filter((station) => isValidCoordinate(station)),
@@ -340,15 +400,22 @@
   ]);
 
   onMounted(async () => {
-    echarts.registerMap(QINGHAI_MAP_NAME, QINGHAI_GEO_JSON as any);
-    bindMapClick();
+    echarts.registerMap(QINGHAI_MAP_NAME, QINGHAI_GEO_JSON);
+    loadMapTexture();
     await loadDashboard();
   });
 
   onBeforeUnmount(() => {
     const instance = getMapInstance();
-    if (instance && chartClickHandler) {
-      instance.off('click', chartClickHandler);
+    if (instance && chartRenderedHandler) {
+      instance.off('rendered', chartRenderedHandler);
+      instance.off('finished', chartRenderedHandler);
+    }
+    if (markerUpdateFrame) {
+      window.cancelAnimationFrame(markerUpdateFrame);
+    }
+    if (continuousMarkerUpdateFrame) {
+      window.cancelAnimationFrame(continuousMarkerUpdateFrame);
     }
   });
 
@@ -364,12 +431,19 @@
     if (isRefreshingDashboard) {
       return;
     }
-    updateStationSeries();
+    nextTick(updateStationMarkers);
   });
 
   watch(mapLayerState, () => {
     renderMapChart();
   });
+
+  watch(
+    () => mapLayerState.baseMap,
+    () => {
+      loadMapTexture();
+    },
+  );
 
   async function loadDashboard() {
     loading.value = true;
@@ -404,39 +478,52 @@
     }
   }
 
-  function bindMapClick() {
+  function bindMapEvents() {
     nextTick(() => {
       const instance = getMapInstance();
       if (!instance) {
         return;
       }
-      if (chartClickHandler) {
-        instance.off('click', chartClickHandler);
+      if (chartRenderedHandler) {
+        instance.off('rendered', chartRenderedHandler);
+        instance.off('finished', chartRenderedHandler);
       }
-      chartClickHandler = (params: any) => {
-        if (params?.seriesId === STATION_SERIES_ID && params?.data?.station) {
-          selectStation(params.data.station);
-        }
+      chartRenderedHandler = () => {
+        scheduleStationMarkerUpdate();
       };
-      instance.on('click', chartClickHandler);
+      instance.on('rendered', chartRenderedHandler);
+      instance.on('finished', chartRenderedHandler);
+      scheduleStationMarkerUpdate();
     });
   }
 
   function renderMapChart() {
-    setMapOptions({
+    const mapOptions: EChartsOption & {
+      geo3D: ReturnType<typeof createMapGeo3DOption>;
+      series: ReturnType<typeof createMapSeriesOptions>;
+    } = {
       tooltip: { show: false },
       geo3D: createMapGeo3DOption(),
       series: createMapSeriesOptions(),
-    } as any);
+    };
+    void setMapOptions(mapOptions).then(() => {
+      getMapInstance()?.getZr().refresh();
+      scheduleStationMarkerUpdate();
+    });
     isMapRendered = true;
-    bindMapClick();
+    bindMapEvents();
   }
 
   function createMapGeo3DOption() {
     const baseMapOption = getBaseMapOption(mapLayerState.baseMap);
+    const materialOption = {
+      detailTexture: mapTexture.value || undefined,
+      textureTiling: 1,
+      textureOffset: 0,
+    };
     return {
       map: QINGHAI_MAP_NAME,
-      roam: true,
+      roam: false,
       regionHeight: 5.8,
       center: QINGHAI_CENTER,
       boxHeight: 12,
@@ -445,8 +532,8 @@
       environment: 'rgba(0,0,0,0)',
       shading: baseMapOption.shading,
       itemStyle: {
-        color: baseMapOption.topColor || MAP_AREA_COLOR,
-        opacity: 0.96,
+        color: baseMapOption.surfaceColor || MAP_AREA_COLOR,
+        opacity: baseMapOption.surfaceOpacity,
         borderColor: mapLayerState.showBoundary
           ? baseMapOption.borderColor
           : 'rgba(122, 167, 247, 0.08)',
@@ -458,17 +545,21 @@
       },
       label: {
         show: mapLayerState.showLabels,
-        color: '#e7edf8',
-        fontWeight: 700,
+        color: '#fff',
+        fontSize: 15,
+        fontWeight: 500,
       },
       realisticMaterial: {
+        ...materialOption,
         roughness: mapLayerState.baseMap === 'imagery' ? 0.82 : 0.56,
         metalness: 0,
       },
+      lambertMaterial: materialOption,
+      colorMaterial: materialOption,
       light: {
         main: {
           intensity: mapLayerState.baseMap === 'imagery' ? 1.2 : 1.05,
-          shadow: true,
+          shadow: false,
           alpha: 38,
           beta: 18,
         },
@@ -490,42 +581,31 @@
       },
       viewControl: {
         projection: 'perspective',
-        distance: 118,
-        alpha: 52,
-        beta: 0,
+        autoRotate: false,
+        distance: 106,
+        alpha: 42,
+        beta: -8,
         center: [0, 0, 0],
-        rotateSensitivity: 1,
-        zoomSensitivity: 1,
-        panSensitivity: 0.8,
+        rotateSensitivity: 0,
+        zoomSensitivity: 1.1,
+        panSensitivity: 0,
       },
     };
   }
 
   function createMapSeriesOptions() {
-    return [
-      {
-        id: STATION_SERIES_ID,
-        type: 'scatter3D',
-        coordinateSystem: 'geo3D',
-        symbol: 'circle',
-        symbolSize: 10,
-        silent: false,
-        animation: true,
-        blendMode: 'source-over',
-        label: {
-          show: false,
-        },
-        emphasis: {
-          label: {
-            show: true,
-            formatter: '{b}',
-            color: '#fff',
-            distance: 8,
-          },
-        },
-        data: mapLayerState.showStations ? displayStations.value.map(toStationPointData) : [],
-      },
-    ];
+    return [];
+  }
+
+  async function loadMapTexture() {
+    const requestId = ++mapTextureRequestId;
+    const bounds = getQinghaiGeoBounds();
+    const texture = await buildMapTexture(mapLayerState.baseMap, bounds);
+    if (requestId !== mapTextureRequestId) {
+      return;
+    }
+    mapTexture.value = texture ? markRaw(texture) : null;
+    renderMapChart();
   }
 
   function renderBasinRatioChart() {
@@ -668,6 +748,9 @@
   }
 
   function setBaseMap(baseMap: BaseMapMode) {
+    if (mapLayerState.baseMap === baseMap) {
+      return;
+    }
     mapLayerState.baseMap = baseMap;
   }
 
@@ -685,42 +768,232 @@
     return visibleStationTypeCounts.value.get(type) || 0;
   }
 
-  function updateStationSeries() {
+  function updateSelectedStationEffect() {
+    updateStationMarkers();
+  }
+
+  function handleMapWheel() {
+    startContinuousStationMarkerUpdate(420);
+  }
+
+  function updateStationMarkers() {
     if (!isMapRendered) {
       renderMapChart();
       return;
     }
-    getMapInstance()?.setOption({
-      series: [
-        {
-          id: STATION_SERIES_ID,
-          data: mapLayerState.showStations ? displayStations.value.map(toStationPointData) : [],
-        },
-      ],
+    scheduleStationMarkerUpdate();
+  }
+
+  function startContinuousStationMarkerUpdate(duration = 240) {
+    extendContinuousStationMarkerUpdate(duration);
+    if (!continuousMarkerUpdateFrame) {
+      runContinuousStationMarkerUpdate();
+    }
+  }
+
+  function extendContinuousStationMarkerUpdate(duration = 240) {
+    continuousMarkerUpdateUntil = getNow() + duration;
+  }
+
+  function runContinuousStationMarkerUpdate() {
+    refreshStationMarkers();
+    if (getNow() < continuousMarkerUpdateUntil) {
+      continuousMarkerUpdateFrame = window.requestAnimationFrame(runContinuousStationMarkerUpdate);
+      return;
+    }
+    continuousMarkerUpdateFrame = 0;
+    scheduleStationMarkerUpdate();
+  }
+
+  function scheduleStationMarkerUpdate() {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (markerUpdateFrame) {
+      window.cancelAnimationFrame(markerUpdateFrame);
+    }
+    markerUpdateFrame = window.requestAnimationFrame(() => {
+      markerUpdateFrame = 0;
+      refreshStationMarkers();
     });
   }
 
-  function updateSelectedStationEffect() {
-    updateStationSeries();
+  function getNow() {
+    return typeof performance === 'undefined' ? Date.now() : performance.now();
   }
 
-  function toStationPointData(station: WaterStationMapVO) {
-    const color = getStationColor(station.stationType);
-    const stationKey = getStationKey(station);
-    const isSelected = stationKey === selectedStationKey.value;
-    return {
-      name: station.stationName,
-      value: [Number(station.longitude), Number(station.latitude), isSelected ? 3.8 : 2.4],
-      station,
-      stationKey,
-      symbolSize: isSelected ? 16 : 10,
-      itemStyle: {
-        color,
-        opacity: 0.95,
-        borderColor: '#fff',
-        borderWidth: isSelected ? 2 : 1,
-      },
+  function refreshStationMarkers() {
+    const instance = getMapInstance();
+    const chartElement = mapChartRef.value;
+    if (!instance || !chartElement || !mapLayerState.showStations) {
+      stationMarkerElements.forEach((element) => {
+        element.style.display = 'none';
+      });
+      return;
+    }
+    const chartRect = chartElement.getBoundingClientRect();
+    stationMarkers.value.forEach((marker) => {
+      const element = stationMarkerElements.get(marker.stationKey);
+      if (!element) {
+        return;
+      }
+      const point = projectStationToPixel(instance, marker.station, chartRect);
+      if (!point) {
+        element.style.display = 'none';
+        return;
+      }
+      element.style.display = 'block';
+      element.style.transform = `translate3d(${point[0]}px, ${point[1]}px, 0) translate(-50%, -50%)`;
+    });
+  }
+
+  function setStationMarkerElement(
+    stationKey: string,
+    element: Element | ComponentPublicInstance | null,
+  ) {
+    if (element instanceof HTMLElement) {
+      stationMarkerElements.set(stationKey, element);
+      scheduleStationMarkerUpdate();
+      return;
+    }
+    stationMarkerElements.delete(stationKey);
+  }
+
+  function projectStationToPixel(
+    instance: any,
+    station: WaterStationMapVO,
+    chartRect: DOMRect,
+  ): [number, number] | null {
+    const longitude = Number(station.longitude);
+    const latitude = Number(station.latitude);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+      return null;
+    }
+    const geo3DPoint = projectStationByGeo3DCamera(instance, longitude, latitude, chartRect);
+    if (geo3DPoint) {
+      return geo3DPoint;
+    }
+    try {
+      const point = instance.convertToPixel({ geo3DIndex: 0 }, [longitude, latitude, 0]);
+      if (isFinitePixel(point)) {
+        return [point[0], point[1]];
+      }
+    } catch (error) {
+      // ECharts-GL does not expose convertToPixel consistently across builds.
+    }
+    return projectStationByGeoBounds(longitude, latitude, chartRect);
+  }
+
+  function projectStationByGeo3DCamera(
+    instance: any,
+    longitude: number,
+    latitude: number,
+    chartRect: DOMRect,
+  ): [number, number] | null {
+    const geo3D = instance.getModel?.()?.getComponent?.('geo3D')?.coordinateSystem;
+    const viewGL = geo3D?.viewGL;
+    const camera = viewGL?.camera;
+    const viewport = viewGL?.viewport;
+    if (!geo3D?.dataToPoint || !camera?.viewMatrix || !camera?.projectionMatrix || !viewport) {
+      return null;
+    }
+    camera.update?.(true);
+    const worldPoint = geo3D.dataToPoint([longitude, latitude, 0]);
+    const ndcPoint = transformWorldToNdc(
+      worldPoint,
+      camera.viewMatrix.array,
+      camera.projectionMatrix.array,
+    );
+    if (!ndcPoint) {
+      return null;
+    }
+    const left = viewport.x + ((ndcPoint[0] + 1) / 2) * viewport.width;
+    const top = chartRect.height - (viewport.y + ((ndcPoint[1] + 1) / 2) * viewport.height);
+    return [left, top];
+  }
+
+  function transformWorldToNdc(
+    point: number[],
+    viewMatrix: ArrayLike<number>,
+    projectionMatrix: ArrayLike<number>,
+  ): [number, number] | null {
+    const viewPoint = transformPoint4(point[0], point[1], point[2], 1, viewMatrix);
+    const clipPoint = transformPoint4(
+      viewPoint[0],
+      viewPoint[1],
+      viewPoint[2],
+      viewPoint[3],
+      projectionMatrix,
+    );
+    if (!clipPoint[3]) {
+      return null;
+    }
+    return [clipPoint[0] / clipPoint[3], clipPoint[1] / clipPoint[3]];
+  }
+
+  function transformPoint4(x: number, y: number, z: number, w: number, matrix: ArrayLike<number>) {
+    return [
+      matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12] * w,
+      matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13] * w,
+      matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14] * w,
+      matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15] * w,
+    ];
+  }
+
+  function projectStationByGeoBounds(
+    longitude: number,
+    latitude: number,
+    chartRect: DOMRect,
+  ): [number, number] | null {
+    const bounds = getQinghaiGeoBounds();
+    const lngSpan = bounds.maxLng - bounds.minLng;
+    const latSpan = bounds.maxLat - bounds.minLat;
+    if (!lngSpan || !latSpan) {
+      return null;
+    }
+    const xRatio = (longitude - bounds.minLng) / lngSpan;
+    const yRatio = (bounds.maxLat - latitude) / latSpan;
+    const left = chartRect.width * (0.14 + xRatio * 0.72);
+    const top = chartRect.height * (0.18 + yRatio * 0.58);
+    return [left, top];
+  }
+
+  function getQinghaiGeoBounds() {
+    if (qinghaiGeoBounds) {
+      return qinghaiGeoBounds;
+    }
+    const bounds = {
+      minLng: Infinity,
+      maxLng: -Infinity,
+      minLat: Infinity,
+      maxLat: -Infinity,
     };
+    collectCoordinateBounds(QINGHAI_GEO_JSON, bounds);
+    qinghaiGeoBounds = bounds;
+    return bounds;
+  }
+
+  function collectCoordinateBounds(value: any, bounds: GeoBounds) {
+    if (!Array.isArray(value)) {
+      if (value && typeof value === 'object') {
+        Object.values(value).forEach((item) => collectCoordinateBounds(item, bounds));
+      }
+      return;
+    }
+    if (typeof value[0] === 'number' && typeof value[1] === 'number') {
+      bounds.minLng = Math.min(bounds.minLng, value[0]);
+      bounds.maxLng = Math.max(bounds.maxLng, value[0]);
+      bounds.minLat = Math.min(bounds.minLat, value[1]);
+      bounds.maxLat = Math.max(bounds.maxLat, value[1]);
+      return;
+    }
+    value.forEach((item) => collectCoordinateBounds(item, bounds));
+  }
+
+  function isFinitePixel(value: unknown): value is [number, number] {
+    return (
+      Array.isArray(value) && Number.isFinite(Number(value[0])) && Number.isFinite(Number(value[1]))
+    );
   }
 
   function countStationsByType(stations: WaterStationMapVO[]) {
@@ -977,6 +1250,48 @@
     z-index: 1;
     width: 100%;
     height: 100%;
+  }
+
+  .station-marker-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .station-marker {
+    --station-color: #2563eb;
+    position: absolute;
+    display: none;
+    width: 10px;
+    height: 10px;
+    padding: 0;
+    pointer-events: auto;
+    cursor: pointer;
+    background: var(--station-color);
+    border: 2px solid rgba(255, 255, 255, 0.92);
+    border-radius: 50%;
+    box-shadow:
+      0 0 0 1px rgba(2, 8, 23, 0.54),
+      0 0 10px color-mix(in srgb, var(--station-color), transparent 20%);
+    will-change: transform;
+    transition:
+      width 0.16s ease,
+      height 0.16s ease,
+      border-color 0.16s ease,
+      box-shadow 0.16s ease;
+  }
+
+  .station-marker:hover,
+  .station-marker:focus-visible,
+  .station-marker-selected {
+    width: 13px;
+    height: 13px;
+    border-color: #fff;
+    outline: none;
+    box-shadow:
+      0 0 0 2px rgba(2, 8, 23, 0.64),
+      0 0 16px color-mix(in srgb, var(--station-color), transparent 8%);
   }
 
   .screen-panel {
