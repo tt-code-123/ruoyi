@@ -31,6 +31,10 @@ import {
 
 import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import 'echarts-gl/lib/component/geo3D';
+import displayShadowGLSL from 'echarts-gl/lib/util/shader/displayShadow.glsl.js';
+import graphicGL from 'echarts-gl/lib/util/graphicGL';
+
+graphicGL.Shader.import(displayShadowGLSL);
 
 echarts.use([
   LegendComponent,

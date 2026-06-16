@@ -8,7 +8,7 @@ import type {
 
 enum Api {
   PrecipitationList = '/water/calc-formula/precipitation/list',
-  PrecipitationYears = '/water/calc-formula/precipitation/years',
+  PrecipitationYears = '/water/calc-formula/precipitation/station/years',
   SurfaceWaterList = '/water/calc-formula/surface-water/list',
   SurfaceWaterLevel1Regions = '/water/calc-formula/surface-water/level1-regions',
   SurfaceWaterLevel3Regions = '/water/calc-formula/surface-water/level3-regions',

@@ -22,6 +22,20 @@ export interface GeoTileBounds {
   maxLat: number;
 }
 
+export interface TiandituTilePoint {
+  token: string;
+  zoom: number;
+  row: number;
+  col: number;
+}
+
+export interface TiandituTileRange {
+  minCol: number;
+  maxCol: number;
+  minRow: number;
+  maxRow: number;
+}
+
 export const BASE_MAP_OPTIONS: Record<BaseMapMode, BaseMapOption> = {
   vector: {
     label: '矢量地图',
@@ -48,10 +62,51 @@ export const DEFAULT_MAP_LAYER_STATE: MapLayerState = {
 
 const LOCAL_TEXTURE_WIDTH = 1024;
 const LOCAL_TEXTURE_HEIGHT = 768;
+const TILE_SIZE = 256;
+const TIANDITU_TEXTURE_ZOOM = 7;
+const TIANDITU_BASE_URLS: Record<BaseMapMode, string> = {
+  vector: 'http://t0.tianditu.gov.cn/vec_c/wmts',
+  imagery: 'http://t0.tianditu.gov.cn/img_c/wmts',
+};
+const TIANDITU_LAYERS: Record<BaseMapMode, string> = {
+  vector: 'vec',
+  imagery: 'img',
+};
 const localTextureCache = new Map<string, HTMLCanvasElement>();
 
 export function getBaseMapOption(baseMap: BaseMapMode) {
   return BASE_MAP_OPTIONS[baseMap] || BASE_MAP_OPTIONS.vector;
+}
+
+export function getTiandituTileUrl(baseMap: BaseMapMode, tile: TiandituTilePoint) {
+  const params = new URLSearchParams({
+    SERVICE: 'WMTS',
+    REQUEST: 'GetTile',
+    VERSION: '1.0.0',
+    LAYER: TIANDITU_LAYERS[baseMap],
+    STYLE: 'default',
+    TILEMATRIXSET: 'c',
+    FORMAT: 'tiles',
+    TILEMATRIX: String(tile.zoom),
+    TILEROW: String(tile.row),
+    TILECOL: String(tile.col),
+    tk: tile.token,
+  });
+
+  return `${TIANDITU_BASE_URLS[baseMap]}?${params.toString()}`;
+}
+
+export function getTiandituTileRange(bounds: GeoTileBounds, zoom: number): TiandituTileRange {
+  const matrix = getTiandituMatrixSize(zoom);
+  const topLeft = projectToTiandituGlobalPixel(bounds.minLng, bounds.maxLat, zoom);
+  const bottomRight = projectToTiandituGlobalPixel(bounds.maxLng, bounds.minLat, zoom);
+
+  return {
+    minCol: clampTileIndex(Math.floor(topLeft.x / TILE_SIZE), matrix.cols),
+    maxCol: clampTileIndex(Math.floor((bottomRight.x - 0.000001) / TILE_SIZE), matrix.cols),
+    minRow: clampTileIndex(Math.floor(topLeft.y / TILE_SIZE), matrix.rows),
+    maxRow: clampTileIndex(Math.floor((bottomRight.y - 0.000001) / TILE_SIZE), matrix.rows),
+  };
 }
 
 export async function buildMapTexture(baseMap: BaseMapMode, bounds: GeoTileBounds) {
@@ -59,7 +114,8 @@ export async function buildMapTexture(baseMap: BaseMapMode, bounds: GeoTileBound
     return null;
   }
 
-  const cacheKey = getTextureCacheKey(baseMap, bounds, 0);
+  const token = getTiandituToken();
+  const cacheKey = getTextureCacheKey(baseMap, bounds, TIANDITU_TEXTURE_ZOOM, token);
   const cachedTexture = localTextureCache.get(cacheKey);
   if (cachedTexture) {
     return cachedTexture;
@@ -74,14 +130,106 @@ export async function buildMapTexture(baseMap: BaseMapMode, bounds: GeoTileBound
     return null;
   }
 
-  if (baseMap === 'imagery') {
-    drawImageryTexture(context, canvas.width, canvas.height);
-  } else {
-    drawVectorTexture(context, canvas.width, canvas.height);
+  drawFallbackTexture(context, canvas.width, canvas.height, baseMap);
+
+  if (token) {
+    await drawTiandituTiles(context, canvas.width, canvas.height, baseMap, bounds, token);
   }
 
   localTextureCache.set(cacheKey, canvas);
   return canvas;
+}
+
+async function drawTiandituTiles(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  baseMap: BaseMapMode,
+  bounds: GeoTileBounds,
+  token: string,
+) {
+  const zoom = TIANDITU_TEXTURE_ZOOM;
+  const range = getTiandituTileRange(bounds, zoom);
+  const topLeft = projectToTiandituGlobalPixel(bounds.minLng, bounds.maxLat, zoom);
+  const bottomRight = projectToTiandituGlobalPixel(bounds.maxLng, bounds.minLat, zoom);
+  const sourceWidth = bottomRight.x - topLeft.x;
+  const sourceHeight = bottomRight.y - topLeft.y;
+
+  if (sourceWidth <= 0 || sourceHeight <= 0) {
+    return;
+  }
+
+  await Promise.all(
+    Array.from({ length: range.maxRow - range.minRow + 1 }, (_, rowOffset) => {
+      const row = range.minRow + rowOffset;
+      return Promise.all(
+        Array.from({ length: range.maxCol - range.minCol + 1 }, async (_, colOffset) => {
+          const col = range.minCol + colOffset;
+          const image = await loadTileImage(getTiandituTileUrl(baseMap, { token, zoom, row, col }));
+          if (!image) {
+            return;
+          }
+
+          const tileLeft = col * TILE_SIZE;
+          const tileTop = row * TILE_SIZE;
+          const dx = ((tileLeft - topLeft.x) / sourceWidth) * width;
+          const dy = ((tileTop - topLeft.y) / sourceHeight) * height;
+          const dw = (TILE_SIZE / sourceWidth) * width;
+          const dh = (TILE_SIZE / sourceHeight) * height;
+          context.drawImage(image, dx, dy, dw, dh);
+        }),
+      );
+    }),
+  );
+}
+
+function loadTileImage(url: string) {
+  return new Promise<HTMLImageElement | null>((resolve) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = url;
+  });
+}
+
+function drawFallbackTexture(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  baseMap: BaseMapMode,
+) {
+  if (baseMap === 'imagery') {
+    drawImageryTexture(context, width, height);
+  } else {
+    drawVectorTexture(context, width, height);
+  }
+}
+
+function projectToTiandituGlobalPixel(lng: number, lat: number, zoom: number) {
+  const matrix = getTiandituMatrixSize(zoom);
+  const clampedLng = Math.min(180, Math.max(-180, lng));
+  const clampedLat = Math.min(90, Math.max(-90, lat));
+
+  return {
+    x: ((clampedLng + 180) / 360) * matrix.cols * TILE_SIZE,
+    y: ((90 - clampedLat) / 180) * matrix.rows * TILE_SIZE,
+  };
+}
+
+function getTiandituMatrixSize(zoom: number) {
+  return {
+    cols: 2 ** zoom,
+    rows: 2 ** Math.max(zoom - 1, 0),
+  };
+}
+
+function clampTileIndex(value: number, count: number) {
+  return Math.min(count - 1, Math.max(0, value));
+}
+
+function getTiandituToken() {
+  return import.meta.env.VITE_GLOB_TIANDITU_TOKEN?.trim() || '';
 }
 
 function drawVectorTexture(context: CanvasRenderingContext2D, width: number, height: number) {
@@ -227,10 +375,16 @@ function drawTextureLabels(
   context.restore();
 }
 
-function getTextureCacheKey(baseMap: BaseMapMode, bounds: GeoTileBounds, zoom: number) {
+function getTextureCacheKey(
+  baseMap: BaseMapMode,
+  bounds: GeoTileBounds,
+  zoom: number,
+  token: string,
+) {
   return [
     baseMap,
     zoom,
+    token ? 'tianditu' : 'fallback',
     bounds.minLng.toFixed(6),
     bounds.maxLng.toFixed(6),
     bounds.minLat.toFixed(6),

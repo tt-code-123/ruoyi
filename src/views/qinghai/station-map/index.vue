@@ -177,7 +177,8 @@
   const QINGHAI_CENTER: [number, number] = [96.04, 35.72];
   type RegisteredMapSource = Parameters<typeof echarts.registerMap>[1];
   const MAP_AREA_COLOR = '#0b2a5a';
-  const MAP_EMPHASIS_COLOR = '#123f85';
+  const MAP_EMPHASIS_COLOR = '#1a4f91';
+  const MAP_CANVAS_BACKGROUND = '#071a3e';
   const QINGHAI_GEO_JSON = qinghaiGeoJson as unknown as RegisteredMapSource;
   const STATION_COLORS: Record<string, string> = {
     水文: '#2563eb',
@@ -283,6 +284,7 @@
   const trendRows = ref<WaterDashboardMap[]>([]);
   const mapLayerState = reactive<MapLayerState>({ ...DEFAULT_MAP_LAYER_STATE });
   const mapTexture = shallowRef<HTMLCanvasElement | null>(null);
+  const mapTextureBaseMap = ref<BaseMapMode | null>(null);
   const stationMarkers = computed<StationMarkerView[]>(() =>
     displayStations.value.map((station) => {
       const stationKey = getStationKey(station);
@@ -304,6 +306,7 @@
   let qinghaiGeoBounds: GeoBounds | undefined;
   let mapTextureRequestId = 0;
   const stationMarkerElements = new Map<string, HTMLElement>();
+  const mapTextureCache = new Map<BaseMapMode, HTMLCanvasElement>();
 
   interface StationMarkerView {
     station: WaterStationMapVO;
@@ -434,9 +437,12 @@
     nextTick(updateStationMarkers);
   });
 
-  watch(mapLayerState, () => {
-    renderMapChart();
-  });
+  watch(
+    () => [mapLayerState.showBoundary, mapLayerState.showLabels, mapLayerState.showStations],
+    () => {
+      renderMapChart(false);
+    },
+  );
 
   watch(
     () => mapLayerState.baseMap,
@@ -497,7 +503,7 @@
     });
   }
 
-  function renderMapChart() {
+  function renderMapChart(clear = true) {
     const mapOptions: EChartsOption & {
       geo3D: ReturnType<typeof createMapGeo3DOption>;
       series: ReturnType<typeof createMapSeriesOptions>;
@@ -506,7 +512,7 @@
       geo3D: createMapGeo3DOption(),
       series: createMapSeriesOptions(),
     };
-    void setMapOptions(mapOptions).then(() => {
+    void setMapOptions(mapOptions, clear).then(() => {
       getMapInstance()?.getZr().refresh();
       scheduleStationMarkerUpdate();
     });
@@ -516,8 +522,10 @@
 
   function createMapGeo3DOption() {
     const baseMapOption = getBaseMapOption(mapLayerState.baseMap);
+    const texture =
+      mapTextureBaseMap.value === mapLayerState.baseMap ? mapTexture.value || undefined : undefined;
     const materialOption = {
-      detailTexture: mapTexture.value || undefined,
+      detailTexture: texture ? markRaw(cloneTextureCanvas(texture)) : undefined,
       textureTiling: 1,
       textureOffset: 0,
     };
@@ -529,7 +537,7 @@
       boxHeight: 12,
       boxDepth: 84,
       boxWidth: 108,
-      environment: 'rgba(0,0,0,0)',
+      environment: MAP_CANVAS_BACKGROUND,
       shading: baseMapOption.shading,
       itemStyle: {
         color: baseMapOption.surfaceColor || MAP_AREA_COLOR,
@@ -541,13 +549,20 @@
       },
       emphasis: {
         itemStyle: { color: MAP_EMPHASIS_COLOR },
-        label: { color: '#fff' },
+        label: {
+          color: mapLayerState.baseMap === 'vector' ? '#0066ff' : '#fff',
+          textBorderColor: mapLayerState.baseMap === 'vector' ? '#0066ff' : 'rgba(6, 18, 38, 0.95)',
+          textBorderWidth: 1,
+        },
       },
       label: {
         show: mapLayerState.showLabels,
-        color: '#fff',
+        color: mapLayerState.baseMap === 'vector' ? '#0066ff' : '#fff',
         fontSize: 15,
         fontWeight: 500,
+        textBorderColor:
+          mapLayerState.baseMap === 'vector' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(6, 18, 38, 0.9)',
+        textBorderWidth: 2,
       },
       realisticMaterial: {
         ...materialOption,
@@ -599,13 +614,43 @@
 
   async function loadMapTexture() {
     const requestId = ++mapTextureRequestId;
-    const bounds = getQinghaiGeoBounds();
-    const texture = await buildMapTexture(mapLayerState.baseMap, bounds);
-    if (requestId !== mapTextureRequestId) {
+    const baseMap = mapLayerState.baseMap;
+    const cachedTexture = mapTextureCache.get(baseMap);
+    if (cachedTexture) {
+      applyMapTexture(baseMap, cachedTexture);
+      renderMapChart();
       return;
     }
-    mapTexture.value = texture ? markRaw(texture) : null;
+
+    mapTexture.value = null;
+    mapTextureBaseMap.value = null;
+    const bounds = getQinghaiGeoBounds();
+    const texture = await buildMapTexture(baseMap, bounds);
+    if (requestId !== mapTextureRequestId || baseMap !== mapLayerState.baseMap) {
+      return;
+    }
+    if (texture) {
+      mapTextureCache.set(baseMap, texture);
+      applyMapTexture(baseMap, texture);
+    } else {
+      mapTexture.value = null;
+      mapTextureBaseMap.value = null;
+    }
     renderMapChart();
+  }
+
+  function applyMapTexture(baseMap: BaseMapMode, texture: HTMLCanvasElement) {
+    mapTexture.value = markRaw(cloneTextureCanvas(texture));
+    mapTextureBaseMap.value = baseMap;
+  }
+
+  function cloneTextureCanvas(texture: HTMLCanvasElement) {
+    const canvas = document.createElement('canvas');
+    canvas.width = texture.width;
+    canvas.height = texture.height;
+    const context = canvas.getContext('2d');
+    context?.drawImage(texture, 0, 0);
+    return canvas;
   }
 
   function renderBasinRatioChart() {
@@ -873,14 +918,6 @@
     if (geo3DPoint) {
       return geo3DPoint;
     }
-    try {
-      const point = instance.convertToPixel({ geo3DIndex: 0 }, [longitude, latitude, 0]);
-      if (isFinitePixel(point)) {
-        return [point[0], point[1]];
-      }
-    } catch (error) {
-      // ECharts-GL does not expose convertToPixel consistently across builds.
-    }
     return projectStationByGeoBounds(longitude, latitude, chartRect);
   }
 
@@ -988,12 +1025,6 @@
       return;
     }
     value.forEach((item) => collectCoordinateBounds(item, bounds));
-  }
-
-  function isFinitePixel(value: unknown): value is [number, number] {
-    return (
-      Array.isArray(value) && Number.isFinite(Number(value[0])) && Number.isFinite(Number(value[1]))
-    );
   }
 
   function countStationsByType(stations: WaterStationMapVO[]) {
@@ -1250,6 +1281,7 @@
     z-index: 1;
     width: 100%;
     height: 100%;
+    background: #071a3e;
   }
 
   .station-marker-layer {

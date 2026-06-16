@@ -21,23 +21,28 @@
 
   defineOptions({ name: 'QinghaiPrecipitationCalcFormula' });
 
+  const DEFAULT_YEAR_COLUMN_TITLE = '1956-2000(mm)';
+
   const router = useRouter();
   const yearOptions = ref<{ label: string; value: number }[]>([]);
 
   const searchSchemas: FormSchema[] = [
     {
       label: '年份',
-      field: 'year',
+      field: 'yearLabel',
       component: 'Select',
       componentProps: () => ({
         allowClear: true,
         options: yearOptions.value,
         placeholder: '请选择年份',
+        onChange: (value) => {
+          updateYearColumnTitle(value ? String(value) : DEFAULT_YEAR_COLUMN_TITLE);
+        },
       }),
     },
   ];
 
-  const [registerTable] = useTable({
+  const [registerTable, { getForm, reload, setColumns }] = useTable({
     title: '降水计算公式',
     api: waterPrecipitationCalcFormulaList,
     rowKey: 'id',
@@ -55,7 +60,7 @@
         lg: 6,
       },
     },
-    columns: precipitationColumns,
+    columns: getPrecipitationColumns(DEFAULT_YEAR_COLUMN_TITLE),
   });
 
   onMounted(async () => {
@@ -64,10 +69,27 @@
       label: String(year),
       value: year,
     }));
+
+    const firstYear = years[0];
+    if (firstYear) {
+      await getForm().setFieldsValue({ yearLabel: firstYear });
+      updateYearColumnTitle(String(firstYear));
+      await reload();
+    }
   });
 
   function goBack() {
     router.push('/qinghai/calc-formula');
+  }
+
+  function getPrecipitationColumns(yearColumnTitle: string) {
+    return precipitationColumns.map((column) =>
+      column.dataIndex === 'yearPrecipDepth' ? { ...column, title: yearColumnTitle } : column,
+    );
+  }
+
+  function updateYearColumnTitle(yearColumnTitle: string) {
+    setColumns(getPrecipitationColumns(yearColumnTitle));
   }
 </script>
 
